@@ -41,7 +41,7 @@ function AttorneyBillableHours({ data }: AttorneyBillableHoursProps) {
               }}
             />
             <Bar dataKey="hours" radius={[8, 8, 0, 0]}>
-              {data.map((entry, index) => (
+              {data.map((_entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
             </Bar>

@@ -17,7 +17,6 @@ class ClioService {
     try {
       const now = new Date()
       const startOfYear = new Date(now.getFullYear(), 0, 1)
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
 
       // Fetch time entries for billable hours
       const timeEntriesResponse = await clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries', {
