@@ -46,7 +46,11 @@ All metrics are pulled from the Clio API:
    cp .env.example .env
    ```
 
-   **📖 See [CLIO_SETUP.md](CLIO_SETUP.md) for complete Clio API setup instructions**
+   **📖 Setup Guides:**
+   - **[VERCEL_SETUP.md](VERCEL_SETUP.md)** - ⭐ **Deploying to Vercel** (easiest!)
+   - **[SIMPLE_SETUP.md](SIMPLE_SETUP.md)** - Non-technical guide (no coding required!)
+   - **[QUICKSTART.md](QUICKSTART.md)** - Quick 3-step setup
+   - **[CLIO_SETUP.md](CLIO_SETUP.md)** - Detailed technical guide
 
    **Quick setup (OAuth2):**
    ```bash
@@ -54,9 +58,10 @@ All metrics are pulled from the Clio API:
    ```
    This will open Clio in your browser and automatically configure authentication.
 
-   **Manual setup:**
+   **Manual setup (create a `.env` text file):**
    1. Get credentials at https://app.clio.com/settings/api_keys
-   2. Add your access token to `.env`:
+   2. Create a file named `.env` in the project root folder
+   3. Add this (replace with your actual token):
       ```
       VITE_CLIO_API_KEY=your_access_token_here
       VITE_CLIO_API_BASE_URL=https://app.clio.com/api/v4
