@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "clio:auth": "node scripts/clio-auth.js"
   },
   "dependencies": {
     "react": "^18.2.0",

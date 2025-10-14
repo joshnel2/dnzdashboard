@@ -46,17 +46,21 @@ All metrics are pulled from the Clio API:
    cp .env.example .env
    ```
 
-   Edit `.env` and add your Clio credentials:
-   ```
-   VITE_CLIO_API_KEY=your_actual_api_key_here
-   VITE_CLIO_API_BASE_URL=https://app.clio.com/api/v4
-   ```
+   **📖 See [CLIO_SETUP.md](CLIO_SETUP.md) for complete Clio API setup instructions**
 
-   **How to get Clio API credentials:**
-   - Log in to your Clio account
-   - Navigate to Settings > Integrations > API
-   - Generate a new API key
-   - Copy the key to your `.env` file
+   **Quick setup (OAuth2):**
+   ```bash
+   npm run clio:auth
+   ```
+   This will open Clio in your browser and automatically configure authentication.
+
+   **Manual setup:**
+   1. Get credentials at https://app.clio.com/settings/api_keys
+   2. Add your access token to `.env`:
+      ```
+      VITE_CLIO_API_KEY=your_access_token_here
+      VITE_CLIO_API_BASE_URL=https://app.clio.com/api/v4
+      ```
 
 3. **Run the development server:**
    ```bash
