@@ -1,15 +1,34 @@
 import axios from 'axios'
 import type { DashboardData, ClioTimeEntry, ClioActivity } from '../types'
 
-const API_KEY = import.meta.env.VITE_CLIO_API_KEY || ''
 const API_BASE_URL = import.meta.env.VITE_CLIO_API_BASE_URL || 'https://app.clio.com/api/v4'
+
+// Get token from env or localStorage (for OAuth flow)
+const getAccessToken = () => {
+  if (import.meta.env.VITE_CLIO_API_KEY) {
+    return import.meta.env.VITE_CLIO_API_KEY;
+  }
+  // Check localStorage for OAuth token
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('clio_access_token') || '';
+  }
+  return '';
+}
 
 const clioApi = axios.create({
   baseURL: API_BASE_URL,
   headers: {
-    'Authorization': `Bearer ${API_KEY}`,
     'Content-Type': 'application/json',
   },
+})
+
+// Add auth header dynamically
+clioApi.interceptors.request.use((config) => {
+  const token = getAccessToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
 })
 
 class ClioService {
