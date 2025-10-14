@@ -54,6 +54,38 @@ Then follow the prompts. Before deploying, do Step 3.
 
 This is where you put your Clio token - **super easy, just a web form!**
 
+**OPTION A: You Have Client ID & Client Secret (OAuth2)**
+
+If you created an OAuth2 app in Clio and have Client ID and Client Secret:
+
+1. **In your Vercel project:** Settings → Environment Variables
+
+2. **Add THREE variables:**
+
+   **First:**
+   - Name: `VITE_CLIO_CLIENT_ID`
+   - Value: Your Client ID from Clio
+   - ✅ Production ✅ Preview ✅ Development
+   - Click **Add**
+
+   **Second:**
+   - Name: `VITE_CLIO_CLIENT_SECRET`
+   - Value: Your Client Secret from Clio
+   - ✅ Production ✅ Preview ✅ Development
+   - Click **Add**
+
+   **Third:**
+   - Name: `VITE_CLIO_API_BASE_URL`
+   - Value: `https://app.clio.com/api/v4`
+   - ✅ Production ✅ Preview ✅ Development
+   - Click **Add**
+
+3. **IMPORTANT:** After adding these, you'll need to run the OAuth flow once to get your access token. See "Getting Your Access Token" section below.
+
+---
+
+**OPTION B: You Have Just an API Key/Access Token**
+
 1. **In your Vercel project**, look for the **"Environment Variables"** section
    
    (It's shown during initial setup, or go to: Project Settings → Environment Variables)
