@@ -8,7 +8,7 @@ function AuthButton() {
     setLoading(true)
     try {
       // Get auth URL from our serverless function
-      const response = await fetch('/api/auth/url')
+      const response = await fetch('/api/oauth/url')
       const data = await response.json()
       
       if (data.authUrl) {

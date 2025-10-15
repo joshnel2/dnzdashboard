@@ -47,7 +47,7 @@ Value: https://app.clio.com/api/v4
 
 3. **Add this Redirect URI:**
    ```
-   https://your-project-name.vercel.app/api/auth/callback
+   https://your-project-name.vercel.app/api/oauth/callback
    ```
    Replace `your-project-name` with your actual Vercel domain
 
@@ -144,7 +144,7 @@ You'll see a **"Connect to Clio"** button:
 
 **Fix:**
 1. Go to Clio → Your App → Check Redirect URI
-2. Must exactly match: `https://YOUR-DOMAIN.vercel.app/api/auth/callback`
+2. Must exactly match: `https://YOUR-DOMAIN.vercel.app/api/oauth/callback`
 3. No trailing slash
 4. Must be https (not http)
 
@@ -168,7 +168,7 @@ VITE_CLIO_API_BASE_URL=https://app.clio.com/api/v4
 
 **What you need in Clio:**
 ```
-Redirect URI: https://your-app.vercel.app/api/auth/callback
+Redirect URI: https://your-app.vercel.app/api/oauth/callback
 ```
 
 **That's it!** Users will connect via OAuth automatically. 🚀
