@@ -43,6 +43,12 @@ class ClioService {
       const now = new Date()
       const startOfYear = new Date(now.getFullYear(), 0, 1)
 
+      console.log('Clio API Request:', {
+        baseURL: API_BASE_URL,
+        token: getAccessToken() ? 'Token present (***' + getAccessToken().slice(-4) + ')' : 'NO TOKEN',
+        startOfYear: startOfYear.toISOString()
+      })
+
       // Fetch time entries for billable hours
       const timeEntriesResponse = await clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries', {
         params: {
@@ -50,6 +56,8 @@ class ClioService {
           fields: 'user{id,name},date,quantity,price',
         },
       })
+
+      console.log('Time entries fetched:', timeEntriesResponse.data.data?.length || 0, 'entries')
 
       // Fetch activities for deposits and revenue
       const activitiesResponse = await clioApi.get<{ data: ClioActivity[] }>('/activities', {
@@ -59,9 +67,16 @@ class ClioService {
         },
       })
 
+      console.log('Activities fetched:', activitiesResponse.data.data?.length || 0, 'activities')
+
       return this.transformData(timeEntriesResponse.data.data, activitiesResponse.data.data)
-    } catch (error) {
-      console.error('Clio API Error:', error)
+    } catch (error: any) {
+      console.error('Clio API Error:', {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+      })
       throw error
     }
   }
