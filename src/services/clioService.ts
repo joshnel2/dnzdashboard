@@ -31,42 +31,27 @@ clioApi.interceptors.request.use((config) => {
 class ClioService {
   async getDashboardData(): Promise<DashboardData> {
     try {
-      const now = new Date()
-      const startOfYear = new Date(now.getFullYear(), 0, 1)
+      console.log('Fetching Clio data via proxy API...')
 
-      console.log('Clio API Request:', {
-        baseURL: API_BASE_URL,
-        token: getAccessToken() ? 'Token present (***' + getAccessToken().slice(-4) + ')' : 'NO TOKEN',
-        startOfYear: startOfYear.toISOString()
+      // Call our API proxy which uses CLIO_ACCESS_TOKEN from server env vars
+      const response = await fetch('/api/clio/data')
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || `API request failed: ${response.status}`)
+      }
+
+      const data = await response.json()
+      
+      console.log('Data fetched:', {
+        timeEntries: data.timeEntries?.length || 0,
+        activities: data.activities?.length || 0
       })
 
-      // Fetch time entries for billable hours
-      const timeEntriesResponse = await clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries', {
-        params: {
-          since: startOfYear.toISOString(),
-          fields: 'user{id,name},date,quantity,price',
-        },
-      })
-
-      console.log('Time entries fetched:', timeEntriesResponse.data.data?.length || 0, 'entries')
-
-      // Fetch activities for deposits and revenue
-      const activitiesResponse = await clioApi.get<{ data: ClioActivity[] }>('/activities', {
-        params: {
-          since: startOfYear.toISOString(),
-          type: 'Payment',
-        },
-      })
-
-      console.log('Activities fetched:', activitiesResponse.data.data?.length || 0, 'activities')
-
-      return this.transformData(timeEntriesResponse.data.data, activitiesResponse.data.data)
+      return this.transformData(data.timeEntries, data.activities)
     } catch (error: any) {
       console.error('Clio API Error:', {
         message: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
       })
       throw error
     }
