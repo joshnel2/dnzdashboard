@@ -95,13 +95,19 @@ class ClioService {
       })
       .reduce((sum, activity) => sum + activity.total, 0)
 
-    // Group billable hours by attorney
+    // Group billable hours by attorney (CURRENT MONTH ONLY)
     const attorneyHoursMap = new Map<string, number>()
-    timeEntries.forEach(entry => {
-      const name = entry.user.name
-      const hours = attorneyHoursMap.get(name) || 0
-      attorneyHoursMap.set(name, hours + entry.quantity)
-    })
+    timeEntries
+      .filter(entry => {
+        const entryDate = new Date(entry.date)
+        return entryDate.getMonth() === currentMonth && 
+               entryDate.getFullYear() === currentYear
+      })
+      .forEach(entry => {
+        const name = entry.user.name
+        const hours = attorneyHoursMap.get(name) || 0
+        attorneyHoursMap.set(name, hours + entry.quantity)
+      })
     const attorneyBillableHours = Array.from(attorneyHoursMap.entries())
       .map(([name, hours]) => ({ name, hours }))
       .sort((a, b) => b.hours - a.hours)
