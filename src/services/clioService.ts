@@ -33,27 +33,22 @@ class ClioService {
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
 
-    console.log('Fetching time entries from Clio...')
-    const timeEntriesResponse = await clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
-      params: {
-        since: startOfYear.toISOString(),
-        fields: 'user{id,name},date,quantity,price',
-      },
-    })
-    console.log('Time entries response:', timeEntriesResponse.data)
+    const [timeEntriesResponse, activitiesResponse] = await Promise.all([
+      clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
+        params: {
+          since: startOfYear.toISOString(),
+          fields: 'user{id,name},date,quantity,price',
+        },
+      }),
+      clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
+        params: {
+          since: startOfYear.toISOString(),
+          type: 'Payment',
+        },
+      })
+    ])
 
-    console.log('Fetching activities from Clio...')
-    const activitiesResponse = await clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
-      params: {
-        since: startOfYear.toISOString(),
-        type: 'Payment',
-      },
-    })
-    console.log('Activities response:', activitiesResponse.data)
-
-    const result = this.transformData(timeEntriesResponse.data.data, activitiesResponse.data.data)
-    console.log('Transformed dashboard data:', result)
-    return result
+    return this.transformData(timeEntriesResponse.data.data || [], activitiesResponse.data.data || [])
   }
 
   transformData(timeEntries: ClioTimeEntry[], activities: ClioActivity[]): DashboardData {
