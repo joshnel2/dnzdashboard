@@ -16,27 +16,36 @@ function App() {
         setLoading(true)
         
         const token = localStorage.getItem('clio_access_token')
+        console.log('Token in localStorage:', token ? 'EXISTS' : 'MISSING')
         
         if (!token) {
+          console.log('No token - showing auth button')
           setNeedsAuth(true)
           setLoading(false)
           return
         }
         
+        console.log('Token found - fetching dashboard data...')
         const dashboardData = await clioService.getDashboardData()
+        console.log('Setting dashboard data to state:', dashboardData)
         setData(dashboardData)
         setLoading(false)
+        console.log('Dashboard should now display!')
       } catch (err: any) {
+        console.error('Error fetching data:', err)
         if (err.response?.status === 401) {
+          console.log('401 error - token invalid')
           localStorage.removeItem('clio_access_token')
           setNeedsAuth(true)
         } else {
-          setError('Error loading data')
+          console.error('API Error:', err.response || err.message)
+          setError('Error loading data: ' + (err.response?.data?.error || err.message))
         }
         setLoading(false)
       }
     }
 
+    console.log('App mounted - starting fetch')
     fetchData()
   }, [])
 
