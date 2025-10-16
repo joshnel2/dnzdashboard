@@ -7,6 +7,10 @@ const API_BASE_URL = baseUrl.endsWith('/api/v4') ? baseUrl : `${baseUrl}/api/v4`
 
 // Get token from env or localStorage (for OAuth flow)
 const getAccessToken = () => {
+  // Priority: CLIO_ACCESS_TOKEN (permanent) > CLIO_API_KEY > localStorage (OAuth)
+  if (import.meta.env.CLIO_ACCESS_TOKEN) {
+    return import.meta.env.CLIO_ACCESS_TOKEN;
+  }
   if (import.meta.env.CLIO_API_KEY) {
     return import.meta.env.CLIO_API_KEY;
   }

@@ -11,5 +11,6 @@ export default defineConfig({
     'import.meta.env.CLIO_BASE_URL': JSON.stringify(process.env.CLIO_BASE_URL),
     'import.meta.env.CLIO_CLIENT_ID': JSON.stringify(process.env.CLIO_CLIENT_ID),
     'import.meta.env.CLIO_API_KEY': JSON.stringify(process.env.CLIO_API_KEY),
+    'import.meta.env.CLIO_ACCESS_TOKEN': JSON.stringify(process.env.CLIO_ACCESS_TOKEN),
   },
 })

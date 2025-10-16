@@ -16,10 +16,16 @@ function App() {
         setLoading(true)
         
         // Check if we have credentials
+        const hasAccessToken = import.meta.env.CLIO_ACCESS_TOKEN // Permanent token (no OAuth needed)
         const hasApiKey = import.meta.env.CLIO_API_KEY || localStorage.getItem('clio_access_token')
         const hasClientId = import.meta.env.CLIO_CLIENT_ID
         
-        if (!hasApiKey && !hasClientId) {
+        // If we have a permanent access token, skip OAuth entirely
+        if (hasAccessToken) {
+          console.log('Using permanent CLIO_ACCESS_TOKEN')
+        }
+        
+        if (!hasAccessToken && !hasApiKey && !hasClientId) {
           // No credentials at all - use sample data
           console.log('No Clio credentials found. Using sample data.')
           setData(clioService.getSampleData())
@@ -28,7 +34,7 @@ function App() {
           return
         }
         
-        if (!hasApiKey && hasClientId) {
+        if (!hasAccessToken && !hasApiKey && hasClientId) {
           // Has Client ID but no token yet - need to authenticate
           setNeedsAuth(true)
           setLoading(false)
