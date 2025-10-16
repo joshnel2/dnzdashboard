@@ -183,6 +183,60 @@ class ClioService {
   formatDate(date: Date): string {
     return `${date.getMonth() + 1}/${date.getDate()}`
   }
+
+  // Sample data for demonstration when API is not configured
+  getSampleData(): DashboardData {
+    return {
+      monthlyDeposits: 425000,
+      attorneyBillableHours: [
+        { name: 'Sarah Johnson', hours: 168 },
+        { name: 'Michael Chen', hours: 152 },
+        { name: 'Emily Rodriguez', hours: 145 },
+        { name: 'David Kim', hours: 138 },
+        { name: 'Jennifer Taylor', hours: 125 },
+        { name: 'Robert Martinez', hours: 118 },
+        { name: 'Lisa Anderson', hours: 105 },
+      ],
+      weeklyRevenue: [
+        { week: '8/19', amount: 85000 },
+        { week: '8/26', amount: 92000 },
+        { week: '9/2', amount: 78000 },
+        { week: '9/9', amount: 95000 },
+        { week: '9/16', amount: 88000 },
+        { week: '9/23', amount: 91000 },
+        { week: '9/30', amount: 105000 },
+        { week: '10/7', amount: 98000 },
+        { week: '10/14', amount: 102000 },
+        { week: '10/21', amount: 96000 },
+        { week: '10/28', amount: 89000 },
+        { week: '11/4', amount: 94000 },
+      ],
+      ytdTime: [
+        { date: '2025-01', hours: 1250 },
+        { date: '2025-02', hours: 1180 },
+        { date: '2025-03', hours: 1320 },
+        { date: '2025-04', hours: 1290 },
+        { date: '2025-05', hours: 1405 },
+        { date: '2025-06', hours: 1380 },
+        { date: '2025-07', hours: 1295 },
+        { date: '2025-08', hours: 1350 },
+        { date: '2025-09', hours: 1420 },
+        { date: '2025-10', hours: 1155 },
+      ],
+      ytdRevenue: [
+        { date: '2025-01', amount: 385000 },
+        { date: '2025-02', amount: 360000 },
+        { date: '2025-03', amount: 425000 },
+        { date: '2025-04', amount: 410000 },
+        { date: '2025-05', amount: 455000 },
+        { date: '2025-06', amount: 440000 },
+        { date: '2025-07', amount: 395000 },
+        { date: '2025-08', amount: 420000 },
+        { date: '2025-09', amount: 465000 },
+        { date: '2025-10', amount: 425000 },
+      ],
+    }
+  }
 }
 
 export const clioService = new ClioService()
