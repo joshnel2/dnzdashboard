@@ -59,7 +59,7 @@ function App() {
     return <AuthButton />
   }
 
-  if (error) {
+  if (!data) {
     return (
       <div style={{
         display: 'flex',
@@ -67,14 +67,14 @@ function App() {
         alignItems: 'center',
         height: '100vh',
         fontSize: '24px',
-        color: '#e74c3c'
+        color: '#666'
       }}>
-        {error}
+        Loading...
       </div>
     )
   }
 
-  return <Dashboard data={data!} />
+  return <Dashboard data={data} />
 }
 
 export default App
