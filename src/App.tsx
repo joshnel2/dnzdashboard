@@ -15,9 +15,21 @@ function App() {
       try {
         setLoading(true)
         
-        console.log('Starting dashboard data fetch...')
+        // Check if we have OAuth token in localStorage
+        const token = localStorage.getItem('clio_access_token')
         
-        // Try to fetch real data from Clio via our API proxy
+        console.log('Token check:', token ? 'Token found (***' + token.slice(-4) + ')' : 'No token')
+        
+        if (!token) {
+          // No token - need to authenticate
+          console.log('No token, showing auth button')
+          setNeedsAuth(true)
+          setLoading(false)
+          return
+        }
+        
+        // Try to fetch real data from Clio
+        console.log('Fetching dashboard data from Clio...')
         const dashboardData = await clioService.getDashboardData()
         console.log('Dashboard data received:', dashboardData)
         setData(dashboardData)
@@ -26,10 +38,19 @@ function App() {
       } catch (err: any) {
         console.error('Error fetching dashboard data:', err)
         
-        // If fetch fails, show error and use sample data
-        console.error('Failed to fetch dashboard data, using sample data')
-        setError('Failed to connect to Clio API. Using sample data for demonstration.')
-        setData(clioService.getSampleData())
+        // If fetch fails, check if it's auth error
+        console.error('Error fetching data:', err)
+        
+        if (err.response?.status === 401 || err.message?.includes('401')) {
+          // Token expired or invalid - need to re-authenticate
+          console.log('Token expired, clearing and showing auth')
+          localStorage.removeItem('clio_access_token')
+          setNeedsAuth(true)
+        } else {
+          // Other error - show sample data
+          setError('Failed to load dashboard data. Using sample data.')
+          setData(clioService.getSampleData())
+        }
       } finally {
         setLoading(false)
       }

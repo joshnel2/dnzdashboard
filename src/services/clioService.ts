@@ -31,28 +31,37 @@ clioApi.interceptors.request.use((config) => {
 class ClioService {
   async getDashboardData(): Promise<DashboardData> {
     try {
-      console.log('Fetching Clio data via proxy API...')
+      const now = new Date()
+      const startOfYear = new Date(now.getFullYear(), 0, 1)
 
-      // Call our API proxy which uses CLIO_ACCESS_TOKEN from server env vars
-      const response = await fetch('/api/clio/data')
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || `API request failed: ${response.status}`)
-      }
-
-      const data = await response.json()
-      
-      console.log('Data fetched:', {
-        timeEntries: data.timeEntries?.length || 0,
-        activities: data.activities?.length || 0
+      console.log('Fetching from Clio API:', {
+        baseURL: API_BASE_URL,
+        hasToken: !!getAccessToken(),
       })
 
-      return this.transformData(data.timeEntries, data.activities)
+      // Fetch time entries for billable hours
+      const timeEntriesResponse = await clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
+        params: {
+          since: startOfYear.toISOString(),
+          fields: 'user{id,name},date,quantity,price',
+        },
+      })
+
+      console.log('Time entries fetched:', timeEntriesResponse.data.data?.length || 0)
+
+      // Fetch activities for deposits and revenue
+      const activitiesResponse = await clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
+        params: {
+          since: startOfYear.toISOString(),
+          type: 'Payment',
+        },
+      })
+
+      console.log('Activities fetched:', activitiesResponse.data.data?.length || 0)
+
+      return this.transformData(timeEntriesResponse.data.data, activitiesResponse.data.data)
     } catch (error: any) {
-      console.error('Clio API Error:', {
-        message: error.message,
-      })
+      console.error('Clio API Error:', error)
       throw error
     }
   }
