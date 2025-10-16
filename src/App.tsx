@@ -98,7 +98,23 @@ function App() {
     )
   }
 
-  return <Dashboard data={data!} />
+  if (!data) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        fontSize: '24px',
+        color: '#666'
+      }}>
+        No data available
+      </div>
+    )
+  }
+
+  console.log('🎨 Rendering Dashboard with data:', data)
+  return <Dashboard data={data} />
 }
 
 export default App

@@ -64,6 +64,11 @@ class ClioService {
   }
 
   transformData(timeEntries: ClioTimeEntry[], activities: ClioActivity[]): DashboardData {
+    console.log('🔄 transformData called with:', {
+      timeEntriesCount: timeEntries?.length || 0,
+      activitiesCount: activities?.length || 0,
+    })
+
     const now = new Date()
     const currentMonth = now.getMonth()
     const currentYear = now.getFullYear()
@@ -76,6 +81,8 @@ class ClioService {
                activityDate.getFullYear() === currentYear
       })
       .reduce((sum, activity) => sum + activity.total, 0)
+    
+    console.log('💰 Monthly deposits calculated:', monthlyDeposits)
 
     // Group billable hours by attorney (CURRENT MONTH ONLY)
     const attorneyHoursMap = new Map<string, number>()
@@ -103,13 +110,16 @@ class ClioService {
     // Calculate YTD revenue
     const ytdRevenue = this.calculateYTDRevenue(activities)
 
-    return {
+    const result = {
       monthlyDeposits,
       attorneyBillableHours,
       weeklyRevenue,
       ytdTime,
       ytdRevenue,
     }
+
+    console.log('✅ transformData result:', result)
+    return result
   }
 
   calculateWeeklyRevenue(activities: ClioActivity[]) {
