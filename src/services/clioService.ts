@@ -32,43 +32,25 @@ class ClioService {
   async getDashboardData(): Promise<DashboardData> {
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
-    
-    const token = getAccessToken()
-    console.log('🔑 Using token:', token ? '***' + token.slice(-4) : 'NO TOKEN')
-    console.log('🌐 API Base URL:', API_BASE_URL)
 
-    // Fetch time entries for billable hours
-    console.log('📊 Fetching time entries...')
     const timeEntriesResponse = await clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
       params: {
         since: startOfYear.toISOString(),
         fields: 'user{id,name},date,quantity,price',
       },
     })
-    console.log('✅ Time entries received:', timeEntriesResponse.data.data?.length || 0, 'entries')
 
-    // Fetch activities for deposits and revenue
-    console.log('💰 Fetching activities...')
     const activitiesResponse = await clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
       params: {
         since: startOfYear.toISOString(),
         type: 'Payment',
       },
     })
-    console.log('✅ Activities received:', activitiesResponse.data.data?.length || 0, 'activities')
 
-    const transformedData = this.transformData(timeEntriesResponse.data.data, activitiesResponse.data.data)
-    console.log('🔄 Transformed data:', transformedData)
-    
-    return transformedData
+    return this.transformData(timeEntriesResponse.data.data, activitiesResponse.data.data)
   }
 
   transformData(timeEntries: ClioTimeEntry[], activities: ClioActivity[]): DashboardData {
-    console.log('🔄 transformData called with:', {
-      timeEntriesCount: timeEntries?.length || 0,
-      activitiesCount: activities?.length || 0,
-    })
-
     const now = new Date()
     const currentMonth = now.getMonth()
     const currentYear = now.getFullYear()
@@ -81,8 +63,6 @@ class ClioService {
                activityDate.getFullYear() === currentYear
       })
       .reduce((sum, activity) => sum + activity.total, 0)
-    
-    console.log('💰 Monthly deposits calculated:', monthlyDeposits)
 
     // Group billable hours by attorney (CURRENT MONTH ONLY)
     const attorneyHoursMap = new Map<string, number>()
@@ -110,16 +90,13 @@ class ClioService {
     // Calculate YTD revenue
     const ytdRevenue = this.calculateYTDRevenue(activities)
 
-    const result = {
+    return {
       monthlyDeposits,
       attorneyBillableHours,
       weeklyRevenue,
       ytdTime,
       ytdRevenue,
     }
-
-    console.log('✅ transformData result:', result)
-    return result
   }
 
   calculateWeeklyRevenue(activities: ClioActivity[]) {

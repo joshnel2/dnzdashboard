@@ -11,14 +11,6 @@ interface DashboardProps {
 }
 
 function Dashboard({ data }: DashboardProps) {
-  console.log('📊 Dashboard rendering with:', {
-    monthlyDeposits: data.monthlyDeposits,
-    attorneyBillableHours: data.attorneyBillableHours?.length,
-    weeklyRevenue: data.weeklyRevenue?.length,
-    ytdTime: data.ytdTime?.length,
-    ytdRevenue: data.ytdRevenue?.length,
-  })
-
   return (
     <div className="dashboard">
       <div className="dashboard-left">
