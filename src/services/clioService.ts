@@ -33,6 +33,9 @@ class ClioService {
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
 
+    console.log('Fetching Clio data from:', API_BASE_URL)
+    console.log('Start of year:', startOfYear.toISOString())
+
     const [timeEntriesResponse, activitiesResponse] = await Promise.all([
       clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
         params: {
@@ -47,6 +50,11 @@ class ClioService {
         },
       })
     ])
+
+    console.log('Time entries received:', timeEntriesResponse.data.data?.length || 0)
+    console.log('Activities received:', activitiesResponse.data.data?.length || 0)
+    console.log('Time entries sample:', timeEntriesResponse.data.data?.slice(0, 2))
+    console.log('Activities sample:', activitiesResponse.data.data?.slice(0, 2))
 
     return this.transformData(timeEntriesResponse.data.data || [], activitiesResponse.data.data || [])
   }

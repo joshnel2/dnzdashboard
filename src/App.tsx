@@ -8,6 +8,7 @@ function App() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [needsAuth, setNeedsAuth] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -21,6 +22,7 @@ function App() {
       
       try {
         const dashboardData = await clioService.getDashboardData()
+        console.log('Fetched Clio data:', dashboardData)
         setData(dashboardData)
         setLoading(false)
       } catch (err: any) {
@@ -29,8 +31,13 @@ function App() {
           setNeedsAuth(true)
           setLoading(false)
         } else {
-          // Just use sample data if API fails
-          setData(clioService.getSampleData())
+          // Log the actual error for debugging
+          console.error('Error fetching Clio data:', err)
+          console.error('Error response:', err.response?.data)
+          console.error('Error status:', err.response?.status)
+          
+          // Set error state instead of showing fake data
+          setError(`Failed to fetch Clio data: ${err.message}`)
           setLoading(false)
         }
       }
@@ -56,6 +63,38 @@ function App() {
 
   if (needsAuth) {
     return <AuthButton />
+  }
+
+  if (error) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        fontSize: '18px',
+        color: '#d32f2f',
+        padding: '20px',
+        textAlign: 'center'
+      }}>
+        <div>{error}</div>
+        <div style={{ marginTop: '20px', fontSize: '14px', color: '#666' }}>
+          Check the browser console for more details.
+        </div>
+        <button 
+          onClick={() => window.location.reload()} 
+          style={{
+            marginTop: '20px',
+            padding: '10px 20px',
+            fontSize: '16px',
+            cursor: 'pointer'
+          }}
+        >
+          Retry
+        </button>
+      </div>
+    )
   }
 
   if (!data) {
