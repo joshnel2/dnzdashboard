@@ -15,38 +15,38 @@ function App() {
       try {
         setLoading(true)
         
-        // Check if we have credentials
-        const hasAccessToken = import.meta.env.CLIO_ACCESS_TOKEN // Permanent token (no OAuth needed)
-        const hasApiKey = import.meta.env.CLIO_API_KEY || localStorage.getItem('clio_access_token')
-        const hasClientId = import.meta.env.CLIO_CLIENT_ID
+        // Check if we have a token in localStorage (from OAuth)
+        const localToken = localStorage.getItem('clio_access_token')
         
         console.log('Auth check:', {
-          hasAccessToken: !!hasAccessToken,
-          hasApiKey: !!hasApiKey,
-          hasClientId: !!hasClientId,
-          localStorageToken: !!localStorage.getItem('clio_access_token')
+          hasLocalToken: !!localToken,
+          tokenPreview: localToken ? '***' + localToken.slice(-4) : 'none'
         })
         
-        // If we have a permanent access token, skip OAuth entirely
-        if (hasAccessToken) {
-          console.log('Using permanent CLIO_ACCESS_TOKEN')
-        }
-        
-        if (!hasAccessToken && !hasApiKey && !hasClientId) {
-          // No credentials at all - use sample data
-          console.log('No Clio credentials found. Using sample data.')
-          setData(clioService.getSampleData())
-          setError('No Clio API credentials configured. Using sample data for demonstration.')
-          setLoading(false)
-          return
-        }
-        
-        if (!hasAccessToken && !hasApiKey && hasClientId) {
-          // Has Client ID but no token yet - need to authenticate
-          console.log('Need to authenticate via OAuth')
-          setNeedsAuth(true)
-          setLoading(false)
-          return
+        if (!localToken) {
+          // No token - check if we need OAuth
+          const configResponse = await fetch('/api/config')
+          const config = await configResponse.json()
+          
+          console.log('Server config:', config)
+          
+          if (config.hasAccessToken) {
+            // Server has permanent token, frontend doesn't need one
+            console.log('Server has permanent access token')
+          } else if (config.hasClientId) {
+            // Need to authenticate via OAuth
+            console.log('Need to authenticate via OAuth')
+            setNeedsAuth(true)
+            setLoading(false)
+            return
+          } else {
+            // No credentials at all - use sample data
+            console.log('No Clio credentials found. Using sample data.')
+            setData(clioService.getSampleData())
+            setError('No Clio API credentials configured. Using sample data for demonstration.')
+            setLoading(false)
+            return
+          }
         }
         
         // Try to fetch real data
@@ -62,8 +62,13 @@ function App() {
         // Check if it's an auth error
         if (err.response?.status === 401) {
           // Token is invalid/expired - need to re-authenticate
-          if (import.meta.env.CLIO_CLIENT_ID) {
-            localStorage.removeItem('clio_access_token')
+          localStorage.removeItem('clio_access_token')
+          
+          // Check if we can re-auth
+          const configResponse = await fetch('/api/config')
+          const config = await configResponse.json()
+          
+          if (config.hasClientId) {
             setNeedsAuth(true)
           } else {
             setError('Invalid or expired Clio API token. Using sample data.')

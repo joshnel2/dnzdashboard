@@ -1,20 +1,11 @@
 import axios from 'axios'
 import type { DashboardData, ClioTimeEntry, ClioActivity } from '../types'
 
-// Use CLIO_BASE_URL and append /api/v4
-const baseUrl = import.meta.env.CLIO_BASE_URL || 'https://app.clio.com'
-const API_BASE_URL = baseUrl.endsWith('/api/v4') ? baseUrl : `${baseUrl}/api/v4`
+// Use hardcoded base URL - simpler and more reliable
+const API_BASE_URL = 'https://app.clio.com/api/v4'
 
-// Get token from env or localStorage (for OAuth flow)
+// Get token from localStorage only (set by OAuth flow)
 const getAccessToken = () => {
-  // Priority: CLIO_ACCESS_TOKEN (permanent) > CLIO_API_KEY > localStorage (OAuth)
-  if (import.meta.env.CLIO_ACCESS_TOKEN) {
-    return import.meta.env.CLIO_ACCESS_TOKEN;
-  }
-  if (import.meta.env.CLIO_API_KEY) {
-    return import.meta.env.CLIO_API_KEY;
-  }
-  // Check localStorage for OAuth token
   if (typeof window !== 'undefined') {
     return localStorage.getItem('clio_access_token') || '';
   }
