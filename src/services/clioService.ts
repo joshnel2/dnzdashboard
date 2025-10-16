@@ -30,40 +30,26 @@ clioApi.interceptors.request.use((config) => {
 
 class ClioService {
   async getDashboardData(): Promise<DashboardData> {
-    try {
-      const now = new Date()
-      const startOfYear = new Date(now.getFullYear(), 0, 1)
+    const now = new Date()
+    const startOfYear = new Date(now.getFullYear(), 0, 1)
 
-      console.log('Fetching from Clio API:', {
-        baseURL: API_BASE_URL,
-        hasToken: !!getAccessToken(),
-      })
+    // Fetch time entries for billable hours
+    const timeEntriesResponse = await clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
+      params: {
+        since: startOfYear.toISOString(),
+        fields: 'user{id,name},date,quantity,price',
+      },
+    })
 
-      // Fetch time entries for billable hours
-      const timeEntriesResponse = await clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
-        params: {
-          since: startOfYear.toISOString(),
-          fields: 'user{id,name},date,quantity,price',
-        },
-      })
+    // Fetch activities for deposits and revenue
+    const activitiesResponse = await clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
+      params: {
+        since: startOfYear.toISOString(),
+        type: 'Payment',
+      },
+    })
 
-      console.log('Time entries fetched:', timeEntriesResponse.data.data?.length || 0)
-
-      // Fetch activities for deposits and revenue
-      const activitiesResponse = await clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
-        params: {
-          since: startOfYear.toISOString(),
-          type: 'Payment',
-        },
-      })
-
-      console.log('Activities fetched:', activitiesResponse.data.data?.length || 0)
-
-      return this.transformData(timeEntriesResponse.data.data, activitiesResponse.data.data)
-    } catch (error: any) {
-      console.error('Clio API Error:', error)
-      throw error
-    }
+    return this.transformData(timeEntriesResponse.data.data, activitiesResponse.data.data)
   }
 
   transformData(timeEntries: ClioTimeEntry[], activities: ClioActivity[]): DashboardData {
