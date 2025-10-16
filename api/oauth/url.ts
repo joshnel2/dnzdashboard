@@ -1,9 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
-  const clientId = process.env.VITE_CLIO_CLIENT_ID;
-  // Use explicit redirect URI from env var, fallback to VERCEL_URL, then localhost
-  const redirectUri = process.env.VITE_CLIO_REDIRECT_URI || 
+  // Support both VITE_ and non-VITE_ prefixed env vars (Vercel serverless functions prefer non-VITE_)
+  const clientId = process.env.CLIO_CLIENT_ID || process.env.VITE_CLIO_CLIENT_ID;
+  const redirectUri = process.env.CLIO_REDIRECT_URI || 
+                      process.env.VITE_CLIO_REDIRECT_URI || 
                       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}/api/oauth/callback` : 'http://localhost:3000/api/oauth/callback');
 
   if (!clientId) {
