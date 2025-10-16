@@ -16,8 +16,8 @@ function App() {
         setLoading(true)
         
         // Check if we have credentials
-        const hasApiKey = import.meta.env.VITE_CLIO_API_KEY || localStorage.getItem('clio_access_token')
-        const hasClientId = import.meta.env.VITE_CLIO_CLIENT_ID
+        const hasApiKey = import.meta.env.CLIO_API_KEY || localStorage.getItem('clio_access_token')
+        const hasClientId = import.meta.env.CLIO_CLIENT_ID
         
         if (!hasApiKey && !hasClientId) {
           // No credentials at all - use sample data
@@ -46,7 +46,7 @@ function App() {
         // Check if it's an auth error
         if (err.response?.status === 401) {
           // Token is invalid/expired - need to re-authenticate
-          if (import.meta.env.VITE_CLIO_CLIENT_ID) {
+          if (import.meta.env.CLIO_CLIENT_ID) {
             localStorage.removeItem('clio_access_token')
             setNeedsAuth(true)
           } else {
