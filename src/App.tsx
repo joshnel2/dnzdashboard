@@ -20,6 +20,13 @@ function App() {
         const hasApiKey = import.meta.env.CLIO_API_KEY || localStorage.getItem('clio_access_token')
         const hasClientId = import.meta.env.CLIO_CLIENT_ID
         
+        console.log('Auth check:', {
+          hasAccessToken: !!hasAccessToken,
+          hasApiKey: !!hasApiKey,
+          hasClientId: !!hasClientId,
+          localStorageToken: !!localStorage.getItem('clio_access_token')
+        })
+        
         // If we have a permanent access token, skip OAuth entirely
         if (hasAccessToken) {
           console.log('Using permanent CLIO_ACCESS_TOKEN')
@@ -36,13 +43,16 @@ function App() {
         
         if (!hasAccessToken && !hasApiKey && hasClientId) {
           // Has Client ID but no token yet - need to authenticate
+          console.log('Need to authenticate via OAuth')
           setNeedsAuth(true)
           setLoading(false)
           return
         }
         
         // Try to fetch real data
+        console.log('Fetching dashboard data from Clio API...')
         const dashboardData = await clioService.getDashboardData()
+        console.log('Dashboard data received:', dashboardData)
         setData(dashboardData)
         setError(null)
         setNeedsAuth(false)
