@@ -46,11 +46,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           </head>
           <body>
             <script>
+              console.log('Saving Clio access token to localStorage');
               localStorage.setItem('clio_access_token', '${data.access_token}');
               ${data.refresh_token ? `localStorage.setItem('clio_refresh_token', '${data.refresh_token}');` : ''}
+              console.log('Token saved, redirecting to dashboard');
               window.location.href = '/';
             </script>
-            <p>Authenticating... Please wait.</p>
+            <p>Authentication successful! Redirecting...</p>
           </body>
         </html>
       `);

@@ -32,24 +32,35 @@ class ClioService {
   async getDashboardData(): Promise<DashboardData> {
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
+    
+    const token = getAccessToken()
+    console.log('🔑 Using token:', token ? '***' + token.slice(-4) : 'NO TOKEN')
+    console.log('🌐 API Base URL:', API_BASE_URL)
 
     // Fetch time entries for billable hours
+    console.log('📊 Fetching time entries...')
     const timeEntriesResponse = await clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
       params: {
         since: startOfYear.toISOString(),
         fields: 'user{id,name},date,quantity,price',
       },
     })
+    console.log('✅ Time entries received:', timeEntriesResponse.data.data?.length || 0, 'entries')
 
     // Fetch activities for deposits and revenue
+    console.log('💰 Fetching activities...')
     const activitiesResponse = await clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
       params: {
         since: startOfYear.toISOString(),
         type: 'Payment',
       },
     })
+    console.log('✅ Activities received:', activitiesResponse.data.data?.length || 0, 'activities')
 
-    return this.transformData(timeEntriesResponse.data.data, activitiesResponse.data.data)
+    const transformedData = this.transformData(timeEntriesResponse.data.data, activitiesResponse.data.data)
+    console.log('🔄 Transformed data:', transformedData)
+    
+    return transformedData
   }
 
   transformData(timeEntries: ClioTimeEntry[], activities: ClioActivity[]): DashboardData {
