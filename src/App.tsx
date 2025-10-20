@@ -7,7 +7,6 @@ import type { DashboardData } from './types'
 function App() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [needsAuth, setNeedsAuth] = useState(false)
 
   useEffect(() => {
