@@ -20,6 +20,7 @@ function App() {
     }
     
     try {
+      // Fetch real data from Clio API
       const dashboardData = await clioService.getDashboardData()
       setData(dashboardData)
       setError(null)
