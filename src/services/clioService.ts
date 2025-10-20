@@ -1,31 +1,15 @@
 import axios from 'axios'
 import type { DashboardData, ClioTimeEntry, ClioActivity } from '../types'
 
-// Use hardcoded base URL - simpler and more reliable
-const API_BASE_URL = 'https://app.clio.com/api/v4'
-
-// Get token from localStorage only (set by OAuth flow)
-const getAccessToken = () => {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem('clio_access_token') || '';
-  }
-  return '';
-}
+// Route all requests through our serverless proxy to avoid CORS
+const API_BASE_URL = '/api/clio'
 
 const clioApi = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-})
-
-// Add auth header dynamically
-clioApi.interceptors.request.use((config) => {
-  const token = getAccessToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
+  // Same-origin requests automatically include cookies; no extra config needed
 })
 
 class ClioService {

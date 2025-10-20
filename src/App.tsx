@@ -11,14 +11,6 @@ function App() {
 
   useEffect(() => {
     const fetchData = async () => {
-      const token = localStorage.getItem('clio_access_token')
-      
-      if (!token) {
-        setNeedsAuth(true)
-        setLoading(false)
-        return
-      }
-      
       try {
         const dashboardData = await clioService.getDashboardData()
         setData(dashboardData)

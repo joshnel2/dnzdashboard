@@ -37,25 +37,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const data = await tokenResponse.json();
 
     if (data.access_token) {
-      // Return HTML that stores token and redirects back to app
-      return res.send(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Authentication Success</title>
-          </head>
-          <body>
-            <script>
-              console.log('Saving Clio access token to localStorage');
-              localStorage.setItem('clio_access_token', '${data.access_token}');
-              ${data.refresh_token ? `localStorage.setItem('clio_refresh_token', '${data.refresh_token}');` : ''}
-              console.log('Token saved, redirecting to dashboard');
-              window.location.href = '/';
-            </script>
-            <p>Authentication successful! Redirecting...</p>
-          </body>
-        </html>
-      `);
+      // Set HttpOnly cookies and redirect back to app
+      const cookies: string[] = [];
+      const accessMaxAge = typeof data.expires_in === 'number' ? data.expires_in : 3600; // seconds
+      cookies.push(
+        `clio_access_token=${data.access_token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${accessMaxAge}`
+      );
+      if (data.refresh_token) {
+        // Refresh token lifetime is typically longer; default to 30 days if not provided
+        const refreshMaxAge = typeof data.refresh_expires_in === 'number' ? data.refresh_expires_in : 60 * 60 * 24 * 30;
+        cookies.push(
+          `clio_refresh_token=${data.refresh_token}; Path=/api/oauth; HttpOnly; Secure; SameSite=Lax; Max-Age=${refreshMaxAge}`
+        );
+      }
+      res.setHeader('Set-Cookie', cookies);
+      res.status(302).setHeader('Location', '/').send('Redirecting...');
+      return;
     } else {
       throw new Error(data.error_description || 'Failed to get access token');
     }
