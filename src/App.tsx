@@ -52,7 +52,7 @@ function App() {
         fontSize: '24px',
         color: '#666'
       }}>
-        Loading dashboard...
+        Loading your dashboard...
       </div>
     )
   }
