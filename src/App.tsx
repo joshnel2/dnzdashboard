@@ -34,6 +34,7 @@ function App() {
             status: err.response?.status,
             data: err.response?.data,
             message: err.message,
+            stack: err.stack,
           })
           setData(clioService.getSampleData())
           setLoading(false)

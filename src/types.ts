@@ -40,13 +40,11 @@ export interface ClioTimeEntry {
   occurred_at?: string
 }
 
-export interface ClioActivity {
+// Clio Payments represent money-in applied to bills (revenue receipts)
+export interface ClioPayment {
   id: number
   date: string
-  total?: number
-  amount?: number
-  price?: number
-  type?: string
-  occurred_at?: string
+  amount: number
   created_at?: string
+  applied_at?: string
 }
