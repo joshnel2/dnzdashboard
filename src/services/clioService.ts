@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { DashboardData, ClioTimeEntry, ClioActivity } from '../types'
+import type { DashboardData, ClioTimeEntry, ClioActivity, ClioPayment } from '../types'
 
 // Route all requests through our serverless proxy to avoid CORS
 const API_BASE_URL = '/api/clio'
@@ -21,7 +21,7 @@ class ClioService {
       baseUrl: API_BASE_URL,
     })
 
-    const [timeEntriesResponse, activitiesResponse] = await Promise.all([
+    const [timeEntriesResponse, activitiesResponse, paymentsResponse] = await Promise.all([
       clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
         params: {
           since: startOfYear.toISOString(),
@@ -35,16 +35,25 @@ class ClioService {
           // Ensure the total and date fields are returned
           fields: 'date,total,type,amount,price,occurred_at,created_at',
         },
+      }),
+      // Payments endpoint (some Clio accounts expose explicit payments)
+      clioApi.get<{ data: ClioPayment[] }>('/payments.json', {
+        params: {
+          since: startOfYear.toISOString(),
+          fields: 'amount,paid_at,created_at,date',
+        },
       })
     ])
 
     const timeEntriesRaw = timeEntriesResponse.data?.data || []
     const activitiesRaw = activitiesResponse.data?.data || []
+    const paymentsRaw = paymentsResponse.data?.data || []
     const timeCount = timeEntriesRaw.length
     const activityCount = activitiesRaw.length
     console.log('[ClioService] API responses received', {
       timeEntriesCount: timeCount,
       activitiesCount: activityCount,
+      paymentsCount: paymentsRaw.length,
       timeEntrySample: timeEntriesRaw.slice(0, 2).map(e => ({
         keys: Object.keys(e),
         date: (e as any).date,
@@ -64,12 +73,19 @@ class ClioService {
         price: (a as any).price,
         type: (a as any).type,
       })),
+      paymentSample: paymentsRaw.slice(0, 2).map(p => ({
+        keys: Object.keys(p),
+        amount: (p as any).amount,
+        date: (p as any).date,
+        paid_at: (p as any).paid_at,
+        created_at: (p as any).created_at,
+      })),
     })
 
-    return this.transformData(timeEntriesResponse.data.data || [], activitiesResponse.data.data || [])
+    return this.transformData(timeEntriesRaw, activitiesRaw, paymentsRaw)
   }
 
-  transformData(timeEntries: ClioTimeEntry[], activities: ClioActivity[]): DashboardData {
+  transformData(timeEntries: ClioTimeEntry[], activities: ClioActivity[], payments: ClioPayment[]): DashboardData {
     const now = new Date()
     const currentMonth = now.getMonth()
     const currentYear = now.getFullYear()
@@ -81,7 +97,16 @@ class ClioService {
     })
 
     // Calculate monthly deposits
-    const monthlyDeposits = activities
+    // Prefer explicit payments if present; else fall back to activities
+    const paymentDeposits = payments
+      .filter(p => {
+        const ds = p.paid_at || p.date || p.created_at
+        const d = ds ? new Date(ds) : new Date(NaN)
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear
+      })
+      .reduce((sum, p) => sum + (p.amount ?? p.total ?? p.price ?? 0), 0)
+
+    const activityDeposits = activities
       .filter(activity => {
         const effectiveDateStr = activity.occurred_at || activity.date || activity.created_at
         const activityDate = effectiveDateStr ? new Date(effectiveDateStr) : new Date(NaN)
@@ -96,6 +121,7 @@ class ClioService {
           0
         return sum + value
       }, 0)
+    const monthlyDeposits = paymentDeposits || activityDeposits
     console.log('[ClioService] Monthly deposits (current month)', { monthlyDeposits })
 
     // Group billable hours by attorney (CURRENT MONTH ONLY)
