@@ -16,21 +16,55 @@ class ClioService {
   async getDashboardData(): Promise<DashboardData> {
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
+    console.log('[ClioService] getDashboardData()', {
+      since: startOfYear.toISOString(),
+      baseUrl: API_BASE_URL,
+    })
 
     const [timeEntriesResponse, activitiesResponse] = await Promise.all([
       clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
         params: {
           since: startOfYear.toISOString(),
-          fields: 'user{id,name},date,quantity,price',
+          fields: 'user{id,name},date,quantity,price,occurred_at',
         },
       }),
       clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
         params: {
           since: startOfYear.toISOString(),
           type: 'Payment',
+          // Ensure the total and date fields are returned
+          fields: 'date,total,type,amount,price,occurred_at,created_at',
         },
       })
     ])
+
+    const timeEntriesRaw = timeEntriesResponse.data?.data || []
+    const activitiesRaw = activitiesResponse.data?.data || []
+    const timeCount = timeEntriesRaw.length
+    const activityCount = activitiesRaw.length
+    console.log('[ClioService] API responses received', {
+      timeEntriesCount: timeCount,
+      activitiesCount: activityCount,
+      timeEntrySample: timeEntriesRaw.slice(0, 2).map(e => ({
+        keys: Object.keys(e),
+        date: (e as any).date,
+        occurred_at: (e as any).occurred_at,
+        created_at: (e as any).created_at,
+        quantity: (e as any).quantity,
+        duration: (e as any).duration,
+        user: (e as any).user?.name,
+      })),
+      activitySample: activitiesRaw.slice(0, 2).map(a => ({
+        keys: Object.keys(a),
+        date: (a as any).date,
+        occurred_at: (a as any).occurred_at,
+        created_at: (a as any).created_at,
+        total: (a as any).total,
+        amount: (a as any).amount,
+        price: (a as any).price,
+        type: (a as any).type,
+      })),
+    })
 
     return this.transformData(timeEntriesResponse.data.data || [], activitiesResponse.data.data || [])
   }
@@ -39,41 +73,66 @@ class ClioService {
     const now = new Date()
     const currentMonth = now.getMonth()
     const currentYear = now.getFullYear()
+    console.log('[ClioService] transformData()', {
+      timeEntries: timeEntries.length,
+      activities: activities.length,
+      currentMonth: currentMonth + 1,
+      currentYear,
+    })
 
     // Calculate monthly deposits
     const monthlyDeposits = activities
       .filter(activity => {
-        const activityDate = new Date(activity.date)
+        const effectiveDateStr = activity.occurred_at || activity.date || activity.created_at
+        const activityDate = effectiveDateStr ? new Date(effectiveDateStr) : new Date(NaN)
         return activityDate.getMonth() === currentMonth && 
                activityDate.getFullYear() === currentYear
       })
-      .reduce((sum, activity) => sum + activity.total, 0)
+      .reduce((sum, activity) => {
+        const value =
+          (typeof activity.total === 'number' ? activity.total : undefined) ??
+          (typeof activity.amount === 'number' ? activity.amount : undefined) ??
+          (typeof activity.price === 'number' ? activity.price : undefined) ??
+          0
+        return sum + value
+      }, 0)
+    console.log('[ClioService] Monthly deposits (current month)', { monthlyDeposits })
 
     // Group billable hours by attorney (CURRENT MONTH ONLY)
     const attorneyHoursMap = new Map<string, number>()
-    timeEntries
-      .filter(entry => {
-        const entryDate = new Date(entry.date)
-        return entryDate.getMonth() === currentMonth && 
-               entryDate.getFullYear() === currentYear
-      })
-      .forEach(entry => {
-        const name = entry.user.name
-        const hours = attorneyHoursMap.get(name) || 0
-        attorneyHoursMap.set(name, hours + entry.quantity)
-      })
+    const timeEntriesInMonth = timeEntries.filter(entry => {
+      const effectiveDateStr = entry.occurred_at || entry.date || (entry as any).created_at
+      const entryDate = effectiveDateStr ? new Date(effectiveDateStr) : new Date(NaN)
+      return entryDate.getMonth() === currentMonth && entryDate.getFullYear() === currentYear
+    })
+    console.log('[ClioService] Time entries filtering', {
+      totalTimeEntries: timeEntries.length,
+      inMonthCount: timeEntriesInMonth.length,
+    })
+    timeEntriesInMonth.forEach(entry => {
+      const name = entry.user?.name || 'Unknown'
+      const quantity = typeof entry.quantity === 'number' ? entry.quantity : undefined
+      const duration = typeof (entry as any).duration === 'number' ? (entry as any).duration : undefined
+      const hours = quantity ?? (duration !== undefined ? duration / 3600 : 0)
+      const current = attorneyHoursMap.get(name) || 0
+      attorneyHoursMap.set(name, current + hours)
+    })
     const attorneyBillableHours = Array.from(attorneyHoursMap.entries())
       .map(([name, hours]) => ({ name, hours }))
       .sort((a, b) => b.hours - a.hours)
+    console.log('[ClioService] Attorney billable hours (top 5)', attorneyBillableHours.slice(0, 5))
 
     // Calculate weekly revenue (last 12 weeks)
     const weeklyRevenue = this.calculateWeeklyRevenue(activities)
+    console.log('[ClioService] Weekly revenue weeks', weeklyRevenue.length)
 
     // Calculate YTD time entries
     const ytdTime = this.calculateYTDTime(timeEntries)
+    console.log('[ClioService] YTD time months', ytdTime.length)
 
     // Calculate YTD revenue
     const ytdRevenue = this.calculateYTDRevenue(activities)
+    console.log('[ClioService] YTD revenue months', ytdRevenue.length)
 
     return {
       monthlyDeposits,
@@ -89,12 +148,18 @@ class ClioService {
     const now = new Date()
 
     activities.forEach(activity => {
-      const activityDate = new Date(activity.date)
+      const effectiveDateStr = activity.occurred_at || activity.date || activity.created_at
+      const activityDate = effectiveDateStr ? new Date(effectiveDateStr) : new Date(NaN)
       const weekStart = this.getWeekStart(activityDate)
       const weekKey = this.formatDate(weekStart)
       
+      const deposit =
+        (typeof activity.total === 'number' ? activity.total : undefined) ??
+        (typeof activity.amount === 'number' ? activity.amount : undefined) ??
+        (typeof activity.price === 'number' ? activity.price : undefined) ??
+        0
       const current = weeklyMap.get(weekKey) || 0
-      weeklyMap.set(weekKey, current + activity.total)
+      weeklyMap.set(weekKey, current + deposit)
     })
 
     // Get last 12 weeks
@@ -133,11 +198,17 @@ class ClioService {
     const monthlyMap = new Map<string, number>()
 
     activities.forEach(activity => {
-      const date = new Date(activity.date)
+      const effectiveDateStr = activity.occurred_at || activity.date || activity.created_at
+      const date = effectiveDateStr ? new Date(effectiveDateStr) : new Date(NaN)
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
       
+      const deposit =
+        (typeof activity.total === 'number' ? activity.total : undefined) ??
+        (typeof activity.amount === 'number' ? activity.amount : undefined) ??
+        (typeof activity.price === 'number' ? activity.price : undefined) ??
+        0
       const current = monthlyMap.get(monthKey) || 0
-      monthlyMap.set(monthKey, current + activity.total)
+      monthlyMap.set(monthKey, current + deposit)
     })
 
     return Array.from(monthlyMap.entries())
