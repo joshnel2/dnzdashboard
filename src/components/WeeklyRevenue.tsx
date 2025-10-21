@@ -1,5 +1,6 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import type { WeeklyRevenue as WeeklyData } from '../types'
+import { useEffect } from 'react'
 import './ChartSection.css'
 
 interface WeeklyRevenueProps {
@@ -7,6 +8,9 @@ interface WeeklyRevenueProps {
 }
 
 function WeeklyRevenue({ data }: WeeklyRevenueProps) {
+  useEffect(() => {
+    console.log('[UI] WeeklyRevenue data', { count: data?.length || 0, head: data?.[0] })
+  }, [data])
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
