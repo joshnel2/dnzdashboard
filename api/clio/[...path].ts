@@ -79,8 +79,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       init.body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body)
     }
 
+    const upstreamStart = Date.now()
     const upstream = await fetch(finalUrl, init)
-    console.log('[Clio Proxy] Upstream response', { status: upstream.status, ok: upstream.ok })
+    const upstreamDurationMs = Date.now() - upstreamStart
+    console.log('[Clio Proxy] Upstream response', { status: upstream.status, ok: upstream.ok, durationMs: upstreamDurationMs })
     const text = await upstream.text()
 
     // Forward status and body as-is; ensure JSON content type

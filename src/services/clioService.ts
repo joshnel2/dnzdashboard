@@ -12,34 +12,71 @@ const clioApi = axios.create({
   // Same-origin requests automatically include cookies; no extra config needed
 })
 
+// Add lightweight request/response logging to help diagnose issues
+clioApi.interceptors.request.use((config) => {
+  const method = (config.method || 'get').toUpperCase()
+  const url = `${config.baseURL || ''}${config.url || ''}`
+  const params = config.params || {}
+  ;(config as any).meta = { start: Date.now() }
+  console.log('[ClioService] Request', { method, url, params })
+  return config
+})
+
+clioApi.interceptors.response.use(
+  (response) => {
+    const meta = (response.config as any).meta
+    const durationMs = meta?.start ? Date.now() - meta.start : undefined
+    const url = `${response.config.baseURL || ''}${response.config.url || ''}`
+    const count = Array.isArray((response.data as any)?.data)
+      ? ((response.data as any).data as unknown[]).length
+      : undefined
+    console.log('[ClioService] Response', {
+      url,
+      status: response.status,
+      durationMs,
+      count,
+    })
+    return response
+  },
+  (error) => {
+    const config = error.config || {}
+    const method = (config.method || 'get').toUpperCase()
+    const url = `${config.baseURL || ''}${config.url || ''}`
+    const status = error.response?.status
+    console.error('[ClioService] HTTP Error', {
+      method,
+      url,
+      status,
+      data: error.response?.data,
+      message: error.message,
+    })
+    return Promise.reject(error)
+  }
+)
+
 class ClioService {
   async getDashboardData(): Promise<DashboardData> {
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
     console.log('[ClioService] getDashboardData()', {
-      since: startOfYear.toISOString(),
       baseUrl: API_BASE_URL,
+      since: startOfYear.toISOString(),
+      monthSince: startOfMonth.toISOString(),
+      monthUntil: endOfMonth.toISOString(),
     })
 
-    const [timeEntriesResponse, activitiesResponse] = await Promise.all([
-      clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
-        params: {
-          since: startOfYear.toISOString(),
-          fields: 'user{id,name},date,quantity,price,occurred_at',
-        },
+    // Fetch all pages for each endpoint to avoid partial results
+    const [timeEntriesRaw, activitiesRaw] = await Promise.all([
+      // Prefer the dedicated time entries endpoint; avoid date filters for compatibility
+      this.fetchAll<ClioTimeEntry>('/time_entries.json', {
+        limit: 200,
       }),
-      clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
-        params: {
-          since: startOfYear.toISOString(),
-          type: 'Payment',
-          // Ensure the total and date fields are returned
-          fields: 'date,total,type,amount,price,occurred_at,created_at',
-        },
-      })
+      // Prefer payments when available; fallback to activities filtered to payments
+      this.fetchPaymentsOrActivities(startOfYear.toISOString()),
     ])
 
-    const timeEntriesRaw = timeEntriesResponse.data?.data || []
-    const activitiesRaw = activitiesResponse.data?.data || []
     const timeCount = timeEntriesRaw.length
     const activityCount = activitiesRaw.length
     console.log('[ClioService] API responses received', {
@@ -66,7 +103,63 @@ class ClioService {
       })),
     })
 
-    return this.transformData(timeEntriesResponse.data.data || [], activitiesResponse.data.data || [])
+    return this.transformData(timeEntriesRaw, activitiesRaw)
+  }
+
+  // Fetch all pages from a Clio collection endpoint
+  private async fetchAll<T>(path: string, baseParams: Record<string, any>): Promise<T[]> {
+    const results: T[] = []
+    let page = 1
+    const limit = Number(baseParams.limit) || 200
+    // Avoid mutating caller's params
+    const params = { ...baseParams }
+
+    for (;;) {
+      const resp = await clioApi.get<{ data: T[] }>(path, {
+        params: { ...params, page, limit },
+      })
+      const pageItems = resp.data?.data || []
+      console.log('[ClioService] fetchAll page', { path, page, count: pageItems.length })
+      results.push(...pageItems)
+      if (pageItems.length < limit) break
+      page += 1
+      if (page > 50) { // safety guard against runaway pagination
+        console.warn('[ClioService] fetchAll page limit reached, stopping', { path })
+        break
+      }
+    }
+    console.log('[ClioService] fetchAll done', { path, total: results.length })
+    return results
+  }
+
+  // Try payments first; if none found, fallback to activities to approximate revenue
+  private async fetchPaymentsOrActivities(_sinceIso: string): Promise<ClioActivity[]> {
+    try {
+      const payments = await this.fetchAll<any>('/payments.json', { limit: 200 })
+      if (payments.length > 0) {
+        // Normalize payments to the ClioActivity shape consumed by downstream transforms
+        const normalized: ClioActivity[] = payments.map((p: any) => ({
+          id: p.id,
+          date: p.date || p.recorded_at || p.created_at,
+          total: typeof p.total === 'number' ? p.total : (typeof p.amount === 'number' ? p.amount : undefined),
+          amount: typeof p.amount === 'number' ? p.amount : undefined,
+          price: typeof p.price === 'number' ? p.price : undefined,
+          type: 'Payment',
+          occurred_at: p.occurred_at || p.date || p.recorded_at,
+          created_at: p.created_at,
+        }))
+        return normalized
+      }
+    } catch (e) {
+      console.warn('[ClioService] payments fetch failed, will fallback to activities')
+    }
+
+    // Fallback to activities filtered to payments
+    const activitiesResp = await this.fetchAll<ClioActivity>('/activities.json', {
+      type: 'Payment',
+      limit: 200,
+    })
+    return activitiesResp
   }
 
   transformData(timeEntries: ClioTimeEntry[], activities: ClioActivity[]): DashboardData {
@@ -182,11 +275,16 @@ class ClioService {
     const monthlyMap = new Map<string, number>()
 
     timeEntries.forEach(entry => {
-      const date = new Date(entry.date)
+      const effectiveDateStr = entry.occurred_at || entry.date || (entry as any).created_at
+      const date = effectiveDateStr ? new Date(effectiveDateStr) : new Date(NaN)
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-      
+
+      const quantity = typeof entry.quantity === 'number' ? entry.quantity : undefined
+      const duration = typeof (entry as any).duration === 'number' ? (entry as any).duration : undefined
+      const hours = quantity ?? (duration !== undefined ? duration / 3600 : 0)
+
       const current = monthlyMap.get(monthKey) || 0
-      monthlyMap.set(monthKey, current + entry.quantity)
+      monthlyMap.set(monthKey, current + hours)
     })
 
     return Array.from(monthlyMap.entries())
