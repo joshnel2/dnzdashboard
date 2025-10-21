@@ -45,7 +45,7 @@ class ClioService {
       baseUrl: API_BASE_URL,
     })
 
-    const [timeEntriesRaw, activitiesRaw, paymentsRaw] = await Promise.all([
+    let [timeEntriesRaw, activitiesRaw, paymentsRaw] = await Promise.all([
       this.fetchAll<ClioTimeEntry>('/time_entries.json', {
         since: startOfMonth.toISOString(),
         until: endOfMonth.toISOString(),
@@ -63,6 +63,23 @@ class ClioService {
         fields: 'amount,paid_at,created_at,date,total,price',
       }),
     ])
+
+    // Fallback: if all empty, retry with no filters and without .json paths
+    if (timeEntriesRaw.length === 0 && activitiesRaw.length === 0 && paymentsRaw.length === 0) {
+      console.warn('[ClioService] Empty results for all endpoints - retrying with fallback (no filters, no .json)')
+      ;[timeEntriesRaw, activitiesRaw, paymentsRaw] = await Promise.all([
+        this.fetchAll<ClioTimeEntry>('/time_entries', {
+          fields: 'user{id,name},date,quantity,price,occurred_at,duration',
+        }),
+        this.fetchAll<ClioActivity>('/activities', {
+          type: 'Payment',
+          fields: 'date,total,type,amount,price,occurred_at,created_at',
+        }),
+        this.fetchAll<ClioPayment>('/payments', {
+          fields: 'amount,paid_at,created_at,date,total,price',
+        }),
+      ])
+    }
     const timeCount = timeEntriesRaw.length
     const activityCount = activitiesRaw.length
     console.log('[ClioService] API responses received', {
