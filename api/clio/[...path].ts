@@ -11,11 +11,25 @@ function parseCookies(cookieHeader: string | undefined): Record<string, string> 
   }, {})
 }
 
+function normalizeClioBaseUrl(raw: string): string {
+  if (!raw) return 'https://app.clio.com/api/v4'
+  const trimmed = raw.replace(/\/$/, '')
+  // If it already ends with /api/vX, keep as-is
+  if (/\/api\/v\d+$/i.test(trimmed)) return trimmed
+  // If it ends with /api, append /v4
+  if (/\/api$/i.test(trimmed)) return `${trimmed}/v4`
+  // If it already contains /api/vX/... deeper path, keep as-is
+  if (/\/api\/v\d+\//i.test(trimmed)) return trimmed
+  // Otherwise, assume it's just the host and append canonical API path
+  return `${trimmed}/api/v4`
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { path = [] } = req.query as { path?: string[] }
   const subPath = Array.isArray(path) ? path.join('/') : String(path || '')
 
-  const baseUrl = process.env.CLIO_BASE_URL || process.env.VITE_CLIO_API_BASE_URL || 'https://app.clio.com/api/v4'
+  const configuredBase = process.env.CLIO_BASE_URL || process.env.VITE_CLIO_API_BASE_URL || 'https://app.clio.com/api/v4'
+  const baseUrl = normalizeClioBaseUrl(configuredBase)
 
   const cookies = parseCookies(req.headers.cookie)
   const token = cookies['clio_access_token'] || process.env.CLIO_ACCESS_TOKEN || process.env.VITE_CLIO_API_KEY
@@ -44,6 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       subPath,
       tokenSource,
       queryKeys: Object.keys(restQuery),
+      baseUrl,
     })
     const searchParams = new URLSearchParams()
     Object.entries(restQuery).forEach(([k, v]) => {
