@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import type { YTDTimeEntry } from '../types'
 import './ChartSection.css'
@@ -7,6 +8,9 @@ interface YTDTimeProps {
 }
 
 function YTDTime({ data }: YTDTimeProps) {
+  useEffect(() => {
+    console.log('[UI] YTDTime data', { count: data?.length || 0, head: data?.[0] })
+  }, [data])
   const formatMonth = (dateStr: string) => {
     const [year, month] = dateStr.split('-')
     const date = new Date(parseInt(year), parseInt(month) - 1)
