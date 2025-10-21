@@ -1,5 +1,6 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import type { AttorneyBillableHours as AttorneyData } from '../types'
+import { useEffect } from 'react'
 import './ChartSection.css'
 
 interface AttorneyBillableHoursProps {
@@ -9,6 +10,9 @@ interface AttorneyBillableHoursProps {
 const COLORS = ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#fee140']
 
 function AttorneyBillableHours({ data }: AttorneyBillableHoursProps) {
+  useEffect(() => {
+    console.log('[UI] AttorneyBillableHours data', { count: data?.length || 0, sample: data?.slice(0, 3) })
+  }, [data])
   return (
     <div className="chart-container">
       <div className="chart-header">
