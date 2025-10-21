@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import './MonthlyDepositsBar.css'
 
 interface MonthlyDepositsBarProps {
@@ -5,6 +6,10 @@ interface MonthlyDepositsBarProps {
 }
 
 function MonthlyDepositsBar({ amount }: MonthlyDepositsBarProps) {
+  useEffect(() => {
+    // Simple, always-visible one-liner for debugging
+    console.log(`[UI] MonthlyDepositsBar amount=${amount}`)
+  }, [amount])
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
