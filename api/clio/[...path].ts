@@ -15,7 +15,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { path = [] } = req.query as { path?: string[] }
   const subPath = Array.isArray(path) ? path.join('/') : String(path || '')
 
-  const baseUrl = process.env.CLIO_BASE_URL || process.env.VITE_CLIO_API_BASE_URL || 'https://app.clio.com/api/v4'
+  const rawBaseUrl = process.env.CLIO_BASE_URL || process.env.VITE_CLIO_API_BASE_URL || 'https://app.clio.com/api/v4'
+  // Ensure we point to the v4 API base
+  const baseUrl = /\/api\/v\d+\/?$/.test(rawBaseUrl)
+    ? rawBaseUrl
+    : `${rawBaseUrl.replace(/\/$/, '')}/api/v4`
 
   const cookies = parseCookies(req.headers.cookie)
   const token = cookies['clio_access_token'] || process.env.CLIO_ACCESS_TOKEN || process.env.VITE_CLIO_API_KEY
@@ -82,6 +86,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const upstream = await fetch(finalUrl, init)
     console.log('[Clio Proxy] Upstream response', { status: upstream.status, ok: upstream.ok })
     const text = await upstream.text()
+    if (!upstream.ok) {
+      console.error('[Clio Proxy] Upstream error body', { status: upstream.status, body: text.slice(0, 2000) })
+    }
 
     // Forward status and body as-is; ensure JSON content type
     res.status(upstream.status)

@@ -1,4 +1,4 @@
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts'
 import type { AttorneyBillableHours as AttorneyData } from '../types'
 import './ChartSection.css'
 
@@ -44,6 +44,7 @@ function AttorneyBillableHours({ data }: AttorneyBillableHoursProps) {
               {data.map((_entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
+              <LabelList dataKey="hours" position="top" formatter={(value: number) => `${value.toFixed(1)}h`} />
             </Bar>
           </BarChart>
         </ResponsiveContainer>

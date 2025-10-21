@@ -35,7 +35,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }),
     });
 
-    const data = await tokenResponse.json();
+    const text = await tokenResponse.text();
+    let data: any
+    try { data = JSON.parse(text) } catch { data = { raw: text } }
 
     if (data.access_token) {
       // Set HttpOnly cookies and redirect back to app
@@ -69,6 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(302).setHeader('Location', '/').send('Redirecting...');
       return;
     } else {
+      console.error('[OAuth] Token exchange failed', { status: tokenResponse.status, body: text.slice(0,2000) })
       throw new Error(data.error_description || 'Failed to get access token');
     }
   } catch (error: any) {
