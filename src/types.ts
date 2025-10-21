@@ -37,6 +37,7 @@ export interface ClioTimeEntry {
   date: string
   quantity: number
   price: number
+  occurred_at?: string
 }
 
 export interface ClioActivity {
@@ -46,4 +47,6 @@ export interface ClioActivity {
   amount?: number
   price?: number
   type?: string
+  occurred_at?: string
+  created_at?: string
 }
