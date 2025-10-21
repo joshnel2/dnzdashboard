@@ -13,6 +13,26 @@ const clioApi = axios.create({
 })
 
 class ClioService {
+  private async fetchAll<T>(
+    path: string,
+    baseParams: Record<string, any>
+  ): Promise<T[]> {
+    const perPage = 200
+    let page = 1
+    const all: T[] = []
+    for (let i = 0; i < 50; i++) { // hard cap to avoid infinite loops
+      const params = { ...baseParams, page, per_page: perPage }
+      const resp = await clioApi.get<{ data: T[] }>(path, { params })
+      const chunk = resp.data?.data || []
+      all.push(...chunk)
+      console.log('[ClioService] fetchAll page', { path, page, count: chunk.length })
+      if (chunk.length < perPage) break
+      page += 1
+    }
+    console.log('[ClioService] fetchAll done', { path, total: all.length })
+    return all
+  }
+
   async getDashboardData(): Promise<DashboardData> {
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
@@ -21,33 +41,21 @@ class ClioService {
       baseUrl: API_BASE_URL,
     })
 
-    const [timeEntriesResponse, activitiesResponse, paymentsResponse] = await Promise.all([
-      clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
-        params: {
-          since: startOfYear.toISOString(),
-          fields: 'user{id,name},date,quantity,price,occurred_at',
-        },
+    const [timeEntriesRaw, activitiesRaw, paymentsRaw] = await Promise.all([
+      this.fetchAll<ClioTimeEntry>('/time_entries.json', {
+        since: startOfYear.toISOString(),
+        fields: 'user{id,name},date,quantity,price,occurred_at,duration',
       }),
-      clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
-        params: {
-          since: startOfYear.toISOString(),
-          type: 'Payment',
-          // Ensure the total and date fields are returned
-          fields: 'date,total,type,amount,price,occurred_at,created_at',
-        },
+      this.fetchAll<ClioActivity>('/activities.json', {
+        since: startOfYear.toISOString(),
+        type: 'Payment',
+        fields: 'date,total,type,amount,price,occurred_at,created_at',
       }),
-      // Payments endpoint (some Clio accounts expose explicit payments)
-      clioApi.get<{ data: ClioPayment[] }>('/payments.json', {
-        params: {
-          since: startOfYear.toISOString(),
-          fields: 'amount,paid_at,created_at,date',
-        },
-      })
+      this.fetchAll<ClioPayment>('/payments.json', {
+        since: startOfYear.toISOString(),
+        fields: 'amount,paid_at,created_at,date,total,price',
+      }),
     ])
-
-    const timeEntriesRaw = timeEntriesResponse.data?.data || []
-    const activitiesRaw = activitiesResponse.data?.data || []
-    const paymentsRaw = paymentsResponse.data?.data || []
     const timeCount = timeEntriesRaw.length
     const activityCount = activitiesRaw.length
     console.log('[ClioService] API responses received', {
