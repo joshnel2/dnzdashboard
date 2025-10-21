@@ -36,23 +36,30 @@ class ClioService {
   async getDashboardData(): Promise<DashboardData> {
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
     console.log('[ClioService] getDashboardData()', {
       since: startOfYear.toISOString(),
+      monthSince: startOfMonth.toISOString(),
+      monthUntil: endOfMonth.toISOString(),
       baseUrl: API_BASE_URL,
     })
 
     const [timeEntriesRaw, activitiesRaw, paymentsRaw] = await Promise.all([
       this.fetchAll<ClioTimeEntry>('/time_entries.json', {
-        since: startOfYear.toISOString(),
+        since: startOfMonth.toISOString(),
+        until: endOfMonth.toISOString(),
         fields: 'user{id,name},date,quantity,price,occurred_at,duration',
       }),
       this.fetchAll<ClioActivity>('/activities.json', {
-        since: startOfYear.toISOString(),
+        since: startOfMonth.toISOString(),
+        until: endOfMonth.toISOString(),
         type: 'Payment',
         fields: 'date,total,type,amount,price,occurred_at,created_at',
       }),
       this.fetchAll<ClioPayment>('/payments.json', {
-        since: startOfYear.toISOString(),
+        since: startOfMonth.toISOString(),
+        until: endOfMonth.toISOString(),
         fields: 'amount,paid_at,created_at,date,total,price',
       }),
     ])
