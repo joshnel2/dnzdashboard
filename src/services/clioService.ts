@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { DashboardData, ClioTimeEntry, ClioActivity } from '../types'
+import type { DashboardData, ClioTimeEntry, ClioActivity, ClioUser } from '../types'
 
 // Route all requests through our serverless proxy to avoid CORS
 const API_BASE_URL = '/api/clio'
@@ -16,37 +16,27 @@ class ClioService {
   async getDashboardData(): Promise<DashboardData> {
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    const monthUntil = new Date(nextMonthStart.getTime() - 1)
+
     console.log('[ClioService] getDashboardData()', {
-      since: startOfYear.toISOString(),
       baseUrl: API_BASE_URL,
+      since: startOfYear.toISOString(),
+      monthSince: currentMonthStart.toISOString(),
+      monthUntil: monthUntil.toISOString(),
     })
 
-    const [timeEntriesResponse, activitiesResponse] = await Promise.all([
-      clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
-        params: {
-          since: startOfYear.toISOString(),
-          fields: 'user{id,name},date,quantity,price,occurred_at',
-        },
-      }),
-      clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
-        params: {
-          since: startOfYear.toISOString(),
-          type: 'Payment',
-          // Ensure the total and date fields are returned
-          fields: 'date,total,type,amount,price,occurred_at,created_at',
-        },
-      })
+    const [timeEntries, activities] = await Promise.all([
+      this.fetchTimeEntries(startOfYear.toISOString()),
+      this.fetchPaymentsOrActivities(startOfYear.toISOString()),
     ])
 
-    const timeEntriesRaw = timeEntriesResponse.data?.data || []
-    const activitiesRaw = activitiesResponse.data?.data || []
-    const timeCount = timeEntriesRaw.length
-    const activityCount = activitiesRaw.length
     console.log('[ClioService] API responses received', {
-      timeEntriesCount: timeCount,
-      activitiesCount: activityCount,
-      timeEntrySample: timeEntriesRaw.slice(0, 2).map(e => ({
-        keys: Object.keys(e),
+      timeEntriesCount: timeEntries.length,
+      activitiesCount: activities.length,
+      timeEntrySample: timeEntries.slice(0, 2).map(e => ({
+        keys: Object.keys(e as any),
         date: (e as any).date,
         occurred_at: (e as any).occurred_at,
         created_at: (e as any).created_at,
@@ -54,8 +44,8 @@ class ClioService {
         duration: (e as any).duration,
         user: (e as any).user?.name,
       })),
-      activitySample: activitiesRaw.slice(0, 2).map(a => ({
-        keys: Object.keys(a),
+      activitySample: activities.slice(0, 2).map(a => ({
+        keys: Object.keys(a as any),
         date: (a as any).date,
         occurred_at: (a as any).occurred_at,
         created_at: (a as any).created_at,
@@ -66,7 +56,176 @@ class ClioService {
       })),
     })
 
-    return this.transformData(timeEntriesResponse.data.data || [], activitiesResponse.data.data || [])
+    return this.transformData(timeEntries, activities)
+  }
+
+  private async fetchTimeEntries(sinceIso: string): Promise<ClioTimeEntry[]> {
+    // Primary: dedicated time entries endpoint
+    const direct = await this.fetchAll<any>('/time_entries.json', {
+      'occurred_at[gte]': sinceIso,
+      fields: 'user{id,name},date,quantity,price,occurred_at,created_at',
+    }, 'time_entries')
+
+    if (direct.length > 0) {
+      console.log('[ClioService] fetchAll done', { path: '/time_entries.json', total: direct.length })
+      return direct as ClioTimeEntry[]
+    }
+
+    console.log('[ClioService] /time_entries.json returned 0 items; trying activities?types[]=TimeEntry')
+    const activitiesTime = await this.fetchAll<any>('/activities.json', {
+      'occurred_at[gte]': sinceIso,
+      'types[]': 'TimeEntry',
+      fields: 'user{id,name},date,quantity,price,occurred_at,created_at,type',
+    }, 'activities')
+
+    if (activitiesTime.length === 0) {
+      console.log('[ClioService] activities?type=TimeEntry returned 0; trying unfiltered activities heuristics')
+      const activitiesAll = await this.fetchAll<any>('/activities.json', {
+        'occurred_at[gte]': sinceIso,
+        fields: 'user{id,name},date,quantity,price,occurred_at,created_at,type',
+      }, 'activities')
+      const mapped = activitiesAll
+        .filter((a: any) => a?.type === 'TimeEntry' || a?.quantity !== undefined)
+        .map((a: any) => this.toClioTimeEntryFromActivity(a))
+      return mapped
+    }
+
+    return activitiesTime.map((a: any) => this.toClioTimeEntryFromActivity(a))
+  }
+
+  private async fetchPaymentsOrActivities(sinceIso: string): Promise<ClioActivity[]> {
+    // Try specific payment endpoints first
+    const payments = await this.fetchAll<any>('/payments.json', {
+      'occurred_at[gte]': sinceIso,
+      fields: 'date,total,amount,price,occurred_at,created_at',
+    }, 'payments')
+    if (payments.length > 0) {
+      return payments.map(p => this.toActivityFromPaymentLike(p))
+    }
+    
+    const billPayments = await this.fetchAll<any>('/bill_payments.json', {
+      'occurred_at[gte]': sinceIso,
+      fields: 'date,total,amount,price,occurred_at,created_at',
+    }, 'bill_payments')
+    if (billPayments.length > 0) {
+      return billPayments.map(p => this.toActivityFromPaymentLike(p))
+    }
+
+    console.log('[ClioService] Payment-specific endpoints returned 0; using heuristic on activities')
+    const activities = await this.fetchAll<any>('/activities.json', {
+      'occurred_at[gte]': sinceIso,
+      'types[]': 'Payment',
+      fields: 'date,total,amount,price,occurred_at,created_at,type',
+    }, 'activities')
+    if (activities.length > 0) {
+      return activities.map(a => this.toActivityFromPaymentLike(a))
+    }
+
+    // Last resort: unfiltered activities and pick likely payment-like ones
+    const allActivities = await this.fetchAll<any>('/activities.json', {
+      'occurred_at[gte]': sinceIso,
+      fields: 'date,total,amount,price,occurred_at,created_at,type',
+    }, 'activities')
+    return allActivities
+      .filter(a => a?.type === 'Payment' || typeof a?.total === 'number' || typeof a?.amount === 'number' || typeof a?.price === 'number')
+      .map(a => this.toActivityFromPaymentLike(a))
+  }
+
+  private toClioTimeEntryFromActivity(a: any): ClioTimeEntry {
+    const user: ClioUser = a?.user && typeof a.user === 'object'
+      ? { id: Number(a.user.id) || 0, name: String(a.user.name || 'Unknown') }
+      : { id: 0, name: 'Unknown' }
+    const dateStr: string = a?.date || a?.occurred_at || a?.created_at || new Date().toISOString()
+    const quantity: number = typeof a?.quantity === 'number'
+      ? a.quantity
+      : typeof a?.duration === 'number'
+      ? a.duration / 3600
+      : 0
+    const price: number = typeof a?.price === 'number'
+      ? a.price
+      : typeof a?.amount === 'number'
+      ? a.amount
+      : 0
+    const id: number = Number(a?.id) || Math.floor(Math.random() * 1_000_000_000)
+    return {
+      id,
+      user,
+      date: dateStr,
+      quantity,
+      price,
+      occurred_at: a?.occurred_at,
+    }
+  }
+
+  private toActivityFromPaymentLike(obj: any): ClioActivity {
+    const dateStr: string = obj?.occurred_at || obj?.date || obj?.created_at || new Date().toISOString()
+    const total: number | undefined = typeof obj?.total === 'number' ? obj.total : undefined
+    const amount: number | undefined = typeof obj?.amount === 'number' ? obj.amount : undefined
+    const price: number | undefined = typeof obj?.price === 'number' ? obj.price : undefined
+    const type: string | undefined = typeof obj?.type === 'string' ? obj.type : 'Payment'
+    const id: number = Number(obj?.id) || Math.floor(Math.random() * 1_000_000_000)
+    return {
+      id,
+      date: dateStr,
+      total,
+      amount,
+      price,
+      type,
+      occurred_at: obj?.occurred_at,
+      created_at: obj?.created_at,
+    }
+  }
+
+  private async fetchAll<T>(
+    path: string,
+    params: Record<string, any>,
+    collectionKey?: string
+  ): Promise<T[]> {
+    const perPage = 200
+    let page = 1
+    const results: T[] = []
+
+    while (true) {
+      const response = await clioApi.get<any>(path, {
+        params: { ...params, page, per_page: perPage },
+      })
+
+      const body = response?.data
+      const keys = body && typeof body === 'object' ? Object.keys(body) : []
+      let pageItems: T[] = []
+      if (Array.isArray(body?.data)) {
+        pageItems = body.data as T[]
+      } else if (collectionKey && Array.isArray((body as any)?.[collectionKey])) {
+        pageItems = (body as any)[collectionKey] as T[]
+      } else {
+        const firstArrayKey = keys.find(k => Array.isArray((body as any)[k]))
+        if (firstArrayKey) {
+          pageItems = (body as any)[firstArrayKey] as T[]
+        } else if (Array.isArray(body)) {
+          pageItems = body as T[]
+        } else {
+          pageItems = []
+        }
+      }
+
+      console.log('[ClioService] Request', { method: 'GET', url: `${API_BASE_URL}${path}`, params: { ...params, page, per_page: perPage } })
+      console.log('[ClioService] Response', { url: `${API_BASE_URL}${path}`, status: 200, count: pageItems.length })
+      console.log('[ClioService] fetchAll page', { path, page, count: pageItems.length, keys, collectionKey: collectionKey || 'data' })
+
+      results.push(...pageItems)
+
+      // Determine pagination
+      const totalPages = body?.meta?.paging?.total_pages
+      const hasMoreByMeta = typeof totalPages === 'number' ? page < totalPages : undefined
+      const hasMoreByCount = pageItems.length === perPage
+      if (hasMoreByMeta === false || (!hasMoreByMeta && !hasMoreByCount)) {
+        break
+      }
+      page += 1
+    }
+
+    console.log('[ClioService] fetchAll done', { path, total: results.length })
+    return results
   }
 
   transformData(timeEntries: ClioTimeEntry[], activities: ClioActivity[]): DashboardData {
