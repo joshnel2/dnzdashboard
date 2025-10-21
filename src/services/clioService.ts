@@ -189,7 +189,7 @@ class ClioService {
 
     for (;;) {
       const resp = await clioApi.get<any>(path, {
-        params: { ...params, page, per_page: perPage },
+        params: { ...params, page, per_page: perPage, page_size: perPage, limit: perPage },
       })
       const collectionKey = inferCollectionKey(path)
       const pageItems: T[] = extractArrayData(resp.data, collectionKey)
@@ -234,11 +234,32 @@ class ClioService {
       console.warn('[ClioService] payments fetch failed, will fallback to activities')
     }
 
+    // Try bill payments endpoint commonly used in Clio for recorded payments
+    try {
+      const billPayments = await this.fetchAll<any>('/bill_payments.json', { per_page: 200 })
+      if (billPayments.length > 0) {
+        const normalized: ClioActivity[] = billPayments.map((p: any) => ({
+          id: p.id,
+          date: p.paid_at || p.date || p.created_at,
+          total:
+            typeof p.amount === 'number' ? p.amount :
+            typeof p.applied_amount === 'number' ? p.applied_amount :
+            typeof p.total === 'number' ? p.total : undefined,
+          amount: typeof p.amount === 'number' ? p.amount : (typeof p.applied_amount === 'number' ? p.applied_amount : undefined),
+          price: undefined,
+          type: 'Payment',
+          occurred_at: p.paid_at || p.date,
+          created_at: p.created_at,
+        }))
+        return normalized
+      }
+    } catch {}
+
     // Fallback to activities filtered to payments (try multiple param shapes)
     let activitiesResp: ClioActivity[] = []
     try {
       activitiesResp = await this.fetchAll<ClioActivity>('/activities.json', {
-        'types[]': ['Payment'],
+        'types[]': ['Payment', 'payment'],
         per_page: 200,
       })
     } catch {}

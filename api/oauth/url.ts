@@ -11,7 +11,25 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'Client ID not configured' });
   }
 
-  const authUrl = `https://app.clio.com/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+  // Request explicit scopes needed by the dashboard
+  const scope = [
+    'read:users',
+    'read:activities',
+    'read:time_entries',
+    'read:payments',
+    'read:bill_payments',
+  ].join(' ')
+
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    scope,
+    access_type: 'offline',
+    prompt: 'consent',
+  })
+
+  const authUrl = `https://app.clio.com/oauth/authorize?${params.toString()}`;
 
   return res.json({ authUrl });
 }
