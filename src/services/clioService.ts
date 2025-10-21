@@ -28,6 +28,8 @@ class ClioService {
         params: {
           since: startOfYear.toISOString(),
           type: 'Payment',
+          // Ensure the total and date fields are returned
+          fields: 'date,total,type',
         },
       })
     ])
