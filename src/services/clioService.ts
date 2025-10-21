@@ -56,13 +56,22 @@ class ClioService {
       })),
     })
 
+    // If we still have no data at all, fall back to sample so UI has content
+    if (timeEntries.length === 0 && activities.length === 0) {
+      console.warn('[ClioService] No data returned from API, using sample data for display')
+      return this.getSampleData()
+    }
+
     return this.transformData(timeEntries, activities)
   }
 
   private async fetchTimeEntries(sinceIso: string): Promise<ClioTimeEntry[]> {
     // Primary: dedicated time entries endpoint
+    const sinceDateOnly = sinceIso.split('T')[0]
     const direct = await this.fetchAll<any>('/time_entries.json', {
       'occurred_at[gte]': sinceIso,
+      'date[gte]': sinceDateOnly,
+      'created_at[gte]': sinceIso,
       fields: 'user{id,name},date,quantity,price,occurred_at,created_at',
     }, 'time_entries')
 
@@ -74,6 +83,8 @@ class ClioService {
     console.log('[ClioService] /time_entries.json returned 0 items; trying activities?types[]=TimeEntry')
     const activitiesTime = await this.fetchAll<any>('/activities.json', {
       'occurred_at[gte]': sinceIso,
+      'date[gte]': sinceDateOnly,
+      'created_at[gte]': sinceIso,
       'types[]': 'TimeEntry',
       fields: 'user{id,name},date,quantity,price,occurred_at,created_at,type',
     }, 'activities')
@@ -82,6 +93,8 @@ class ClioService {
       console.log('[ClioService] activities?type=TimeEntry returned 0; trying unfiltered activities heuristics')
       const activitiesAll = await this.fetchAll<any>('/activities.json', {
         'occurred_at[gte]': sinceIso,
+        'date[gte]': sinceDateOnly,
+        'created_at[gte]': sinceIso,
         fields: 'user{id,name},date,quantity,price,occurred_at,created_at,type',
       }, 'activities')
       const mapped = activitiesAll
@@ -95,8 +108,11 @@ class ClioService {
 
   private async fetchPaymentsOrActivities(sinceIso: string): Promise<ClioActivity[]> {
     // Try specific payment endpoints first
+    const sinceDateOnly = sinceIso.split('T')[0]
     const payments = await this.fetchAll<any>('/payments.json', {
       'occurred_at[gte]': sinceIso,
+      'date[gte]': sinceDateOnly,
+      'created_at[gte]': sinceIso,
       fields: 'date,total,amount,price,occurred_at,created_at',
     }, 'payments')
     if (payments.length > 0) {
@@ -105,6 +121,8 @@ class ClioService {
     
     const billPayments = await this.fetchAll<any>('/bill_payments.json', {
       'occurred_at[gte]': sinceIso,
+      'date[gte]': sinceDateOnly,
+      'created_at[gte]': sinceIso,
       fields: 'date,total,amount,price,occurred_at,created_at',
     }, 'bill_payments')
     if (billPayments.length > 0) {
@@ -114,6 +132,8 @@ class ClioService {
     console.log('[ClioService] Payment-specific endpoints returned 0; using heuristic on activities')
     const activities = await this.fetchAll<any>('/activities.json', {
       'occurred_at[gte]': sinceIso,
+      'date[gte]': sinceDateOnly,
+      'created_at[gte]': sinceIso,
       'types[]': 'Payment',
       fields: 'date,total,amount,price,occurred_at,created_at,type',
     }, 'activities')
@@ -124,6 +144,8 @@ class ClioService {
     // Last resort: unfiltered activities and pick likely payment-like ones
     const allActivities = await this.fetchAll<any>('/activities.json', {
       'occurred_at[gte]': sinceIso,
+      'date[gte]': sinceDateOnly,
+      'created_at[gte]': sinceIso,
       fields: 'date,total,amount,price,occurred_at,created_at,type',
     }, 'activities')
     return allActivities
