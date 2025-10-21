@@ -49,7 +49,14 @@ class ClioService {
         return activityDate.getMonth() === currentMonth && 
                activityDate.getFullYear() === currentYear
       })
-      .reduce((sum, activity) => sum + activity.total, 0)
+      .reduce((sum, activity) => {
+        const value =
+          (typeof activity.total === 'number' ? activity.total : undefined) ??
+          (typeof activity.amount === 'number' ? activity.amount : undefined) ??
+          (typeof activity.price === 'number' ? activity.price : undefined) ??
+          0
+        return sum + value
+      }, 0)
 
     // Group billable hours by attorney (CURRENT MONTH ONLY)
     const attorneyHoursMap = new Map<string, number>()
@@ -95,8 +102,13 @@ class ClioService {
       const weekStart = this.getWeekStart(activityDate)
       const weekKey = this.formatDate(weekStart)
       
+      const deposit =
+        (typeof activity.total === 'number' ? activity.total : undefined) ??
+        (typeof activity.amount === 'number' ? activity.amount : undefined) ??
+        (typeof activity.price === 'number' ? activity.price : undefined) ??
+        0
       const current = weeklyMap.get(weekKey) || 0
-      weeklyMap.set(weekKey, current + activity.total)
+      weeklyMap.set(weekKey, current + deposit)
     })
 
     // Get last 12 weeks
@@ -138,8 +150,13 @@ class ClioService {
       const date = new Date(activity.date)
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
       
+      const deposit =
+        (typeof activity.total === 'number' ? activity.total : undefined) ??
+        (typeof activity.amount === 'number' ? activity.amount : undefined) ??
+        (typeof activity.price === 'number' ? activity.price : undefined) ??
+        0
       const current = monthlyMap.get(monthKey) || 0
-      monthlyMap.set(monthKey, current + activity.total)
+      monthlyMap.set(monthKey, current + deposit)
     })
 
     return Array.from(monthlyMap.entries())

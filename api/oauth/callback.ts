@@ -40,14 +40,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Set HttpOnly cookies and redirect back to app
       const cookies: string[] = [];
       const accessMaxAge = typeof data.expires_in === 'number' ? data.expires_in : 3600; // seconds
+
+      // Only set the Secure flag when the request is over HTTPS (e.g., Vercel)
+      const proto = (req.headers['x-forwarded-proto'] as string) || '';
+      const host = (req.headers['host'] as string) || '';
+      const isSecure = proto.includes('https') || host.includes('vercel.app');
+
+      const accessCookieFlags = `Path=/; HttpOnly; ${isSecure ? 'Secure; ' : ''}SameSite=Lax; Max-Age=${accessMaxAge}`;
       cookies.push(
-        `clio_access_token=${data.access_token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${accessMaxAge}`
+        `clio_access_token=${data.access_token}; ${accessCookieFlags}`
       );
       if (data.refresh_token) {
         // Refresh token lifetime is typically longer; default to 30 days if not provided
         const refreshMaxAge = typeof data.refresh_expires_in === 'number' ? data.refresh_expires_in : 60 * 60 * 24 * 30;
+        const refreshCookieFlags = `Path=/api/oauth; HttpOnly; ${isSecure ? 'Secure; ' : ''}SameSite=Lax; Max-Age=${refreshMaxAge}`;
         cookies.push(
-          `clio_refresh_token=${data.refresh_token}; Path=/api/oauth; HttpOnly; Secure; SameSite=Lax; Max-Age=${refreshMaxAge}`
+          `clio_refresh_token=${data.refresh_token}; ${refreshCookieFlags}`
         );
       }
       res.setHeader('Set-Cookie', cookies);
