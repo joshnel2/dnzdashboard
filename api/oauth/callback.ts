@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { code } = req.query;
+  console.log('[OAuth] Callback received', { hasCode: Boolean(code) })
 
   if (!code) {
     return res.status(400).json({ error: 'No authorization code provided' });
@@ -47,6 +48,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const isSecure = proto.includes('https') || host.includes('vercel.app');
 
       const accessCookieFlags = `Path=/; HttpOnly; ${isSecure ? 'Secure; ' : ''}SameSite=Lax; Max-Age=${accessMaxAge}`;
+      console.log('[OAuth] Token exchange success', {
+        isSecure,
+        redirectUri,
+        accessCookieFlags,
+        hasRefreshToken: Boolean(data.refresh_token),
+      })
       cookies.push(
         `clio_access_token=${data.access_token}; ${accessCookieFlags}`
       );
@@ -65,6 +72,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw new Error(data.error_description || 'Failed to get access token');
     }
   } catch (error: any) {
+    console.error('[OAuth] Authentication failed', { message: error?.message })
     return res.status(500).json({ 
       error: 'Authentication failed', 
       details: error.message 

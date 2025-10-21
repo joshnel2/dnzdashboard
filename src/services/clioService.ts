@@ -16,6 +16,10 @@ class ClioService {
   async getDashboardData(): Promise<DashboardData> {
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
+    console.log('[ClioService] getDashboardData()', {
+      since: startOfYear.toISOString(),
+      baseUrl: API_BASE_URL,
+    })
 
     const [timeEntriesResponse, activitiesResponse] = await Promise.all([
       clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
@@ -34,6 +38,13 @@ class ClioService {
       })
     ])
 
+    const timeCount = (timeEntriesResponse.data?.data || []).length
+    const activityCount = (activitiesResponse.data?.data || []).length
+    console.log('[ClioService] API responses received', {
+      timeEntriesCount: timeCount,
+      activitiesCount: activityCount,
+    })
+
     return this.transformData(timeEntriesResponse.data.data || [], activitiesResponse.data.data || [])
   }
 
@@ -41,6 +52,12 @@ class ClioService {
     const now = new Date()
     const currentMonth = now.getMonth()
     const currentYear = now.getFullYear()
+    console.log('[ClioService] transformData()', {
+      timeEntries: timeEntries.length,
+      activities: activities.length,
+      currentMonth: currentMonth + 1,
+      currentYear,
+    })
 
     // Calculate monthly deposits
     const monthlyDeposits = activities
@@ -57,6 +74,7 @@ class ClioService {
           0
         return sum + value
       }, 0)
+    console.log('[ClioService] Monthly deposits (current month)', { monthlyDeposits })
 
     // Group billable hours by attorney (CURRENT MONTH ONLY)
     const attorneyHoursMap = new Map<string, number>()
@@ -74,15 +92,19 @@ class ClioService {
     const attorneyBillableHours = Array.from(attorneyHoursMap.entries())
       .map(([name, hours]) => ({ name, hours }))
       .sort((a, b) => b.hours - a.hours)
+    console.log('[ClioService] Attorney billable hours (top 5)', attorneyBillableHours.slice(0, 5))
 
     // Calculate weekly revenue (last 12 weeks)
     const weeklyRevenue = this.calculateWeeklyRevenue(activities)
+    console.log('[ClioService] Weekly revenue weeks', weeklyRevenue.length)
 
     // Calculate YTD time entries
     const ytdTime = this.calculateYTDTime(timeEntries)
+    console.log('[ClioService] YTD time months', ytdTime.length)
 
     // Calculate YTD revenue
     const ytdRevenue = this.calculateYTDRevenue(activities)
+    console.log('[ClioService] YTD revenue months', ytdRevenue.length)
 
     return {
       monthlyDeposits,

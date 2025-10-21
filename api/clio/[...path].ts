@@ -19,8 +19,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const cookies = parseCookies(req.headers.cookie)
   const token = cookies['clio_access_token'] || process.env.CLIO_ACCESS_TOKEN || process.env.VITE_CLIO_API_KEY
+  const tokenSource = cookies['clio_access_token']
+    ? 'cookie'
+    : process.env.CLIO_ACCESS_TOKEN
+    ? 'env:CLIO_ACCESS_TOKEN'
+    : process.env.VITE_CLIO_API_KEY
+    ? 'env:VITE_CLIO_API_KEY'
+    : 'none'
 
   if (!token) {
+    console.warn('[Clio Proxy] Missing token', { subPath })
     return res.status(401).json({ error: 'Unauthorized', details: 'Missing Clio access token' })
   }
 
@@ -31,6 +39,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Build query string from req.query excluding our dynamic param
     const { path: _ignored, ...restQuery } = req.query as Record<string, any>
+    console.log('[Clio Proxy] Incoming', {
+      method,
+      subPath,
+      tokenSource,
+      queryKeys: Object.keys(restQuery),
+    })
     const searchParams = new URLSearchParams()
     Object.entries(restQuery).forEach(([k, v]) => {
       if (Array.isArray(v)) {
@@ -41,6 +55,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
 
     const finalUrl = searchParams.toString() ? `${url}?${searchParams.toString()}` : url
+    console.log('[Clio Proxy] Forwarding', { finalUrl })
 
     // Prepare fetch options
     const headers: Record<string, string> = {
@@ -65,6 +80,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const upstream = await fetch(finalUrl, init)
+    console.log('[Clio Proxy] Upstream response', { status: upstream.status, ok: upstream.ok })
     const text = await upstream.text()
 
     // Forward status and body as-is; ensure JSON content type
@@ -73,6 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.setHeader('Content-Type', ct)
     res.send(text)
   } catch (error: any) {
+    console.error('[Clio Proxy] Error', { message: error?.message || String(error) })
     res.status(500).json({ error: 'Proxy request failed', details: error?.message || String(error) })
   }
 }
