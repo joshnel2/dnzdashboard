@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { DashboardData, ClioTimeEntry, ClioActivity, ClioBillPayment } from '../types'
+import type { DashboardData, ClioTimeEntry, ClioBillPayment } from '../types'
 
 // Route all requests through our serverless proxy to avoid CORS
 const API_BASE_URL = '/api/clio'
