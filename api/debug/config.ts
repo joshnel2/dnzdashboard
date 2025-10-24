@@ -7,6 +7,21 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
   const redirectUri = process.env.CLIO_REDIRECT_URI || 
                       process.env.VITE_CLIO_REDIRECT_URI || 
                       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}/api/oauth/callback` : 'http://localhost:3000/api/oauth/callback');
+  try {
+    console.info('[CLIO][api][debug/config] Debug config requested', {
+      method: req.method,
+      host: req.headers.host,
+      vercelUrl: process.env.VERCEL_URL || 'NOT SET',
+      authMode: accessToken ? 'PERMANENT_TOKEN' : (clientId ? 'OAUTH' : 'NONE'),
+      flags: {
+        hasClientId: !!clientId,
+        hasClientSecret: !!clientSecret,
+        hasAccessToken: !!accessToken,
+      },
+    });
+  } catch (_e) {
+    // swallow logging errors
+  }
   
   return res.json({
     clientId: clientId ? '***' + clientId.slice(-4) : 'NOT SET',

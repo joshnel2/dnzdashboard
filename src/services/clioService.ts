@@ -19,19 +19,90 @@ const clioApi = axios.create({
   },
 })
 
-// Add auth header dynamically
+// Add auth header dynamically + request logging
 clioApi.interceptors.request.use((config) => {
   const token = getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
+  // attach start time for duration metrics
+  (config as any).startedAt = Date.now();
+
+  try {
+    const method = (config.method || 'get').toUpperCase();
+    const fullUrl = `${config.baseURL || ''}${config.url || ''}`;
+    const paramsObj: Record<string, unknown> = config.params || {};
+    console.info('[CLIO][http][request]', {
+      method,
+      url: fullUrl,
+      hasAuth: Boolean(token),
+      tokenLast4: token ? token.slice(-4) : null,
+      paramsKeys: Object.keys(paramsObj),
+    });
+  } catch (_e) {
+    // ignore logging failures
+  }
+
   return config;
 })
+
+// Response logging
+clioApi.interceptors.response.use(
+  (response) => {
+    try {
+      const startedAt = (response.config as any).startedAt || Date.now();
+      const durationMs = Date.now() - startedAt;
+      const fullUrl = `${response.config.baseURL || ''}${response.config.url || ''}`;
+      const payload = response.data as any;
+      const arrayLength = Array.isArray(payload?.data) ? payload.data.length : undefined;
+      console.info('[CLIO][http][response]', {
+        url: fullUrl,
+        status: response.status,
+        durationMs,
+        hasDataArray: Array.isArray(payload?.data),
+        arrayLength,
+        topLevelKeys: payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 10) : [],
+      });
+    } catch (_e) {
+      // ignore logging failures
+    }
+    return response;
+  },
+  (error) => {
+    try {
+      const cfg = error?.config || {};
+      const fullUrl = `${cfg.baseURL || ''}${cfg.url || ''}`;
+      const status = error?.response?.status;
+      const data = error?.response?.data;
+      const startedAt = (cfg as any).startedAt || Date.now();
+      const durationMs = Date.now() - startedAt;
+      console.error('[CLIO][http][error]', {
+        url: fullUrl,
+        status,
+        durationMs,
+        message: error?.message,
+        dataSummary: data && typeof data === 'object' ? {
+          keys: Object.keys(data).slice(0, 10),
+          error: (data as any)?.error,
+          error_description: (data as any)?.error_description,
+        } : null,
+      });
+    } catch (_e) {
+      // ignore logging failures
+    }
+    return Promise.reject(error);
+  }
+)
 
 class ClioService {
   async getDashboardData(): Promise<DashboardData> {
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
+
+    console.info('[CLIO][service] getDashboardData start', {
+      startOfYear: startOfYear.toISOString(),
+    })
 
     const [timeEntriesResponse, activitiesResponse] = await Promise.all([
       clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
@@ -48,7 +119,15 @@ class ClioService {
       })
     ])
 
-    return this.transformData(timeEntriesResponse.data.data || [], activitiesResponse.data.data || [])
+    const timeEntries = timeEntriesResponse.data.data || []
+    const activities = activitiesResponse.data.data || []
+
+    console.info('[CLIO][service] getDashboardData fetched', {
+      timeEntriesCount: timeEntries.length,
+      activitiesCount: activities.length,
+    })
+
+    return this.transformData(timeEntries, activities)
   }
 
   transformData(timeEntries: ClioTimeEntry[], activities: ClioActivity[]): DashboardData {
@@ -91,13 +170,29 @@ class ClioService {
     // Calculate YTD revenue
     const ytdRevenue = this.calculateYTDRevenue(activities)
 
-    return {
+    const result: DashboardData = {
       monthlyDeposits,
       attorneyBillableHours,
       weeklyRevenue,
       ytdTime,
       ytdRevenue,
     }
+
+    try {
+      console.info('[CLIO][service] transformData result', {
+        currentMonth: currentMonth + 1,
+        currentYear,
+        monthlyDeposits,
+        attorneyBillableHoursCount: attorneyBillableHours.length,
+        weeklyRevenueWeeks: weeklyRevenue.length,
+        ytdTimeMonths: ytdTime.length,
+        ytdRevenueMonths: ytdRevenue.length,
+      })
+    } catch (_e) {
+      // ignore logging failures
+    }
+
+    return result
   }
 
   calculateWeeklyRevenue(activities: ClioActivity[]) {

@@ -4,6 +4,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { code } = req.query;
 
   if (!code) {
+    console.warn('[CLIO][api][oauth/callback] Missing authorization code in query', {
+      method: req.method,
+      url: req.url,
+      query: req.query,
+      headersPresent: !!req.headers,
+    });
     return res.status(400).json({ error: 'No authorization code provided' });
   }
 
@@ -15,11 +21,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}/api/oauth/callback` : 'http://localhost:3000/api/oauth/callback');
 
   if (!clientId || !clientSecret) {
+    console.error('[CLIO][api][oauth/callback] Missing client credentials', {
+      hasClientId: !!clientId,
+      hasClientSecret: !!clientSecret,
+      redirectUri,
+    });
     return res.status(500).json({ error: 'Client credentials not configured' });
   }
 
   try {
     // Exchange authorization code for access token
+    console.info('[CLIO][api][oauth/callback] Exchanging code for token', {
+      clientIdLast4: clientId ? String(clientId).slice(-4) : null,
+      redirectUri,
+      hasCode: !!code,
+    });
     const tokenResponse = await fetch('https://app.clio.com/oauth/token', {
       method: 'POST',
       headers: {
@@ -35,6 +51,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     const data = await tokenResponse.json();
+    console.info('[CLIO][api][oauth/callback] Token exchange response', {
+      ok: tokenResponse.ok,
+      status: tokenResponse.status,
+      hasAccessToken: !!data?.access_token,
+      hasRefreshToken: !!data?.refresh_token,
+      error: data?.error,
+      error_description: data?.error_description,
+    });
 
     if (data.access_token) {
       // Return HTML that stores token and redirects back to app
@@ -60,6 +84,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw new Error(data.error_description || 'Failed to get access token');
     }
   } catch (error: any) {
+    console.error('[CLIO][api][oauth/callback] Authentication failed', {
+      message: error?.message,
+      stack: error?.stack,
+    });
     return res.status(500).json({ 
       error: 'Authentication failed', 
       details: error.message 
