@@ -3,6 +3,7 @@ import type { DashboardData, ClioTimeEntry, ClioActivity } from '../types'
 
 // Use hardcoded base URL - simpler and more reliable
 const API_BASE_URL = 'https://app.clio.com/api/v4'
+const LOG_ENDPOINT = '/api/debug/log'
 
 // Get token from localStorage only (set by OAuth flow)
 const getAccessToken = () => {
@@ -16,6 +17,7 @@ const clioApi = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
+    'Accept': 'application/json',
   },
 })
 
@@ -40,6 +42,14 @@ clioApi.interceptors.request.use((config) => {
       tokenLast4: token ? token.slice(-4) : null,
       paramsKeys: Object.keys(paramsObj),
     });
+    // fire-and-forget to server logs
+    try {
+      fetch(LOG_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        level: 'info', source: 'client', message: 'http_request', context: {
+          method, url: fullUrl, hasAuth: Boolean(token), paramsKeys: Object.keys(paramsObj)
+        }
+      }) });
+    } catch (_e) {}
   } catch (_e) {
     // ignore logging failures
   }
@@ -60,10 +70,19 @@ clioApi.interceptors.response.use(
         url: fullUrl,
         status: response.status,
         durationMs,
+        requestId: response.headers?.['x-request-id'] || response.headers?.['x-amzn-requestid'] || null,
         hasDataArray: Array.isArray(payload?.data),
         arrayLength,
         topLevelKeys: payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 10) : [],
       });
+      try {
+        fetch(LOG_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          level: 'info', source: 'client', message: 'http_response', context: {
+            url: fullUrl, status: response.status, durationMs, hasDataArray: Array.isArray(payload?.data), arrayLength,
+            requestId: response.headers?.['x-request-id'] || response.headers?.['x-amzn-requestid'] || null,
+          }
+        }) });
+      } catch (_e) {}
     } catch (_e) {
       // ignore logging failures
     }
@@ -88,6 +107,14 @@ clioApi.interceptors.response.use(
           error_description: (data as any)?.error_description,
         } : null,
       });
+      try {
+        fetch(LOG_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          level: 'error', source: 'client', message: 'http_error', context: {
+            url: fullUrl, status, durationMs, errorMessage: error?.message,
+            dataError: (data as any)?.error, dataErrorDesc: (data as any)?.error_description
+          }
+        }) });
+      } catch (_e) {}
     } catch (_e) {
       // ignore logging failures
     }
@@ -103,6 +130,9 @@ class ClioService {
     console.info('[CLIO][service] getDashboardData start', {
       startOfYear: startOfYear.toISOString(),
     })
+    try { fetch(LOG_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      level: 'info', source: 'client', message: 'service_getDashboard_start', context: { startOfYear: startOfYear.toISOString() }
+    }) }); } catch (_e) {}
 
     const [timeEntriesResponse, activitiesResponse] = await Promise.all([
       clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
@@ -126,6 +156,11 @@ class ClioService {
       timeEntriesCount: timeEntries.length,
       activitiesCount: activities.length,
     })
+    try { fetch(LOG_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      level: 'info', source: 'client', message: 'service_getDashboard_fetched', context: {
+        timeEntriesCount: timeEntries.length, activitiesCount: activities.length
+      }
+    }) }); } catch (_e) {}
 
     return this.transformData(timeEntries, activities)
   }
@@ -136,6 +171,14 @@ class ClioService {
     const currentYear = now.getFullYear()
 
     // Calculate monthly deposits
+    // input stats
+    const timeEntryDates = timeEntries.map(t => new Date(t.date)).sort((a, b) => a.getTime() - b.getTime())
+    const activityDates = activities.map(a => new Date(a.date)).sort((a, b) => a.getTime() - b.getTime())
+    const timeEntriesEarliest = timeEntryDates[0]?.toISOString() || null
+    const timeEntriesLatest = timeEntryDates[timeEntryDates.length - 1]?.toISOString() || null
+    const activitiesEarliest = activityDates[0]?.toISOString() || null
+    const activitiesLatest = activityDates[activityDates.length - 1]?.toISOString() || null
+
     const monthlyDeposits = activities
       .filter(activity => {
         const activityDate = new Date(activity.date)
@@ -146,13 +189,13 @@ class ClioService {
 
     // Group billable hours by attorney (CURRENT MONTH ONLY)
     const attorneyHoursMap = new Map<string, number>()
-    timeEntries
+    const monthlyTimeEntries = timeEntries
       .filter(entry => {
         const entryDate = new Date(entry.date)
         return entryDate.getMonth() === currentMonth && 
                entryDate.getFullYear() === currentYear
       })
-      .forEach(entry => {
+    monthlyTimeEntries.forEach(entry => {
         const name = entry.user.name
         const hours = attorneyHoursMap.get(name) || 0
         attorneyHoursMap.set(name, hours + entry.quantity)
@@ -187,7 +230,55 @@ class ClioService {
         weeklyRevenueWeeks: weeklyRevenue.length,
         ytdTimeMonths: ytdTime.length,
         ytdRevenueMonths: ytdRevenue.length,
+        input: {
+          timeEntriesCount: timeEntries.length,
+          activitiesCount: activities.length,
+          timeEntriesEarliest,
+          timeEntriesLatest,
+          activitiesEarliest,
+          activitiesLatest,
+        },
+        filtered: {
+          monthlyTimeEntriesCount: monthlyTimeEntries.length,
+        }
       })
+      fetch(LOG_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        level: 'info', source: 'client', message: 'service_transform_result', context: {
+          currentMonth: currentMonth + 1,
+          currentYear,
+          monthlyDeposits,
+          attorneyBillableHoursCount: attorneyBillableHours.length,
+          weeklyRevenueWeeks: weeklyRevenue.length,
+          ytdTimeMonths: ytdTime.length,
+          ytdRevenueMonths: ytdRevenue.length,
+          timeEntriesCount: timeEntries.length,
+          activitiesCount: activities.length,
+          timeEntriesEarliest,
+          timeEntriesLatest,
+          activitiesEarliest,
+          activitiesLatest,
+          monthlyTimeEntriesCount: monthlyTimeEntries.length,
+        }
+      }) });
+
+      if (monthlyDeposits === 0 || attorneyBillableHours.length === 0) {
+        const sampleTime = timeEntries.slice(0, 3).map(t => ({ date: t.date, qty: t.quantity, user: t.user?.name }))
+        const sampleAct = activities.slice(0, 3).map(a => ({ date: a.date, total: a.total }))
+        console.warn('[CLIO][service] Empty current-month data after filter', {
+          monthlyDeposits,
+          attorneyBillableHoursCount: attorneyBillableHours.length,
+          sampleTime,
+          sampleAct,
+        })
+        fetch(LOG_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          level: 'warn', source: 'client', message: 'empty_current_month', context: {
+            monthlyDeposits,
+            attorneyBillableHoursCount: attorneyBillableHours.length,
+            sampleTime,
+            sampleAct,
+          }
+        }) });
+      }
     } catch (_e) {
       // ignore logging failures
     }

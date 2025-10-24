@@ -11,6 +11,19 @@ interface DashboardProps {
 }
 
 function Dashboard({ data }: DashboardProps) {
+  try {
+    if (!data) {
+      console.warn('[CLIO][ui] Dashboard rendered with no data')
+    } else {
+      console.info('[CLIO][ui] Dashboard render', {
+        monthlyDeposits: data.monthlyDeposits,
+        hours: data.attorneyBillableHours.length,
+        weeks: data.weeklyRevenue.length,
+        ytdTime: data.ytdTime.length,
+        ytdRevenue: data.ytdRevenue.length,
+      })
+    }
+  } catch (_e) {}
   return (
     <div className="dashboard">
       <div className="dashboard-left">

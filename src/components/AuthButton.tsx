@@ -8,18 +8,20 @@ function AuthButton() {
     setLoading(true)
     try {
       // Get auth URL from our serverless function
+      console.info('[CLIO][auth] Requesting OAuth URL...')
       const response = await fetch('/api/oauth/url')
       const data = await response.json()
       
       if (data.authUrl) {
         // Redirect to Clio authorization page
+        console.info('[CLIO][auth] Redirecting to Clio authorize')
         window.location.href = data.authUrl
       } else {
-        console.error('Failed to get auth URL')
+        console.error('[CLIO][auth] Failed to get auth URL payload', data)
         setLoading(false)
       }
     } catch (error) {
-      console.error('Error initiating OAuth:', error)
+      console.error('[CLIO][auth] Error initiating OAuth', error)
       setLoading(false)
     }
   }
