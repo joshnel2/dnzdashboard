@@ -7,11 +7,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'No authorization code provided' });
   }
 
-  // Support both VITE_ and non-VITE_ prefixed env vars (Vercel serverless functions prefer non-VITE_)
-  const clientId = process.env.CLIO_CLIENT_ID || process.env.VITE_CLIO_CLIENT_ID;
-  const clientSecret = process.env.CLIO_CLIENT_SECRET || process.env.VITE_CLIO_CLIENT_SECRET;
+  // Use CLIO_* environment variables exclusively
+  const clientId = process.env.CLIO_CLIENT_ID;
+  const clientSecret = process.env.CLIO_CLIENT_SECRET;
+  const baseUrl = (process.env.CLIO_BASE_URL || 'https://app.clio.com').replace(/\/$/, '');
   const redirectUri = process.env.CLIO_REDIRECT_URI || 
-                      process.env.VITE_CLIO_REDIRECT_URI || 
                       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}/api/oauth/callback` : 'http://localhost:3000/api/oauth/callback');
 
   if (!clientId || !clientSecret) {
@@ -20,7 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     // Exchange authorization code for access token
-    const tokenResponse = await fetch('https://app.clio.com/oauth/token', {
+    const tokenResponse = await fetch(`${baseUrl}/oauth/token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -49,6 +49,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               console.log('Saving Clio access token to localStorage');
               localStorage.setItem('clio_access_token', '${data.access_token}');
               ${data.refresh_token ? `localStorage.setItem('clio_refresh_token', '${data.refresh_token}');` : ''}
+              // Persist base URL for API calls on client
+              localStorage.setItem('clio_base_url', '${baseUrl}');
               console.log('Token saved, redirecting to dashboard');
               window.location.href = '/';
             </script>

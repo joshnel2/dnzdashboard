@@ -1,8 +1,16 @@
 import axios from 'axios'
 import type { DashboardData, ClioTimeEntry, ClioActivity } from '../types'
 
-// Use hardcoded base URL - simpler and more reliable
-const API_BASE_URL = 'https://app.clio.com/api/v4'
+// Use CLIO_BASE_URL from localStorage if available (set after OAuth), fallback to default
+const getApiBaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('clio_base_url');
+    if (stored) return `${stored.replace(/\/$/, '')}/api/v4`;
+  }
+  return 'https://app.clio.com/api/v4';
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 // Get token from localStorage only (set by OAuth flow)
 const getAccessToken = () => {
@@ -36,14 +44,16 @@ class ClioService {
     const [timeEntriesResponse, activitiesResponse] = await Promise.all([
       clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
         params: {
-          since: startOfYear.toISOString(),
+          // Clio v4: filter using gte on date
+          'date[gte]': startOfYear.toISOString().slice(0, 10),
           fields: 'user{id,name},date,quantity,price',
         },
       }),
       clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
         params: {
-          since: startOfYear.toISOString(),
+          'date[gte]': startOfYear.toISOString().slice(0, 10),
           type: 'Payment',
+          fields: 'date,amount,type',
         },
       })
     ])
@@ -63,7 +73,7 @@ class ClioService {
         return activityDate.getMonth() === currentMonth && 
                activityDate.getFullYear() === currentYear
       })
-      .reduce((sum, activity) => sum + activity.total, 0)
+      .reduce((sum, activity) => sum + (activity.amount ?? activity.total ?? 0), 0)
 
     // Group billable hours by attorney (CURRENT MONTH ONLY)
     const attorneyHoursMap = new Map<string, number>()
@@ -110,7 +120,7 @@ class ClioService {
       const weekKey = this.formatDate(weekStart)
       
       const current = weeklyMap.get(weekKey) || 0
-      weeklyMap.set(weekKey, current + activity.total)
+      weeklyMap.set(weekKey, current + (activity.amount || 0))
     })
 
     // Get last 12 weeks
@@ -153,7 +163,7 @@ class ClioService {
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
       
       const current = monthlyMap.get(monthKey) || 0
-      monthlyMap.set(monthKey, current + activity.total)
+      monthlyMap.set(monthKey, current + (activity.amount || 0))
     })
 
     return Array.from(monthlyMap.entries())
