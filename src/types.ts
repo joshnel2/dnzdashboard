@@ -50,3 +50,11 @@ export interface ClioActivity {
   occurred_at?: string
   created_at?: string
 }
+
+export interface ClioBillPayment {
+  id: number
+  date: string
+  amount: number
+  applied_date?: string
+  created_at?: string
+}

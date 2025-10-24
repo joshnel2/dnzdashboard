@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { DashboardData, ClioTimeEntry, ClioActivity } from '../types'
+import type { DashboardData, ClioTimeEntry, ClioActivity, ClioBillPayment } from '../types'
 
 // Route all requests through our serverless proxy to avoid CORS
 const API_BASE_URL = '/api/clio'
@@ -21,30 +21,29 @@ class ClioService {
       baseUrl: API_BASE_URL,
     })
 
-    const [timeEntriesResponse, activitiesResponse] = await Promise.all([
+    // Use bill_payments endpoint for actual payment/deposit data
+    const [timeEntriesResponse, paymentsResponse] = await Promise.all([
       clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
         params: {
           since: startOfYear.toISOString(),
-          fields: 'user{id,name},date,quantity,price,occurred_at',
+          fields: 'user{id,name},date,quantity,price,occurred_at,duration',
         },
       }),
-      clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
+      clioApi.get<{ data: ClioBillPayment[] }>('/bill_payments.json', {
         params: {
           since: startOfYear.toISOString(),
-          type: 'Payment',
-          // Ensure the total and date fields are returned
-          fields: 'date,total,type,amount,price,occurred_at,created_at',
+          fields: 'date,amount,applied_date,created_at',
         },
       })
     ])
 
     const timeEntriesRaw = timeEntriesResponse.data?.data || []
-    const activitiesRaw = activitiesResponse.data?.data || []
+    const paymentsRaw = paymentsResponse.data?.data || []
     const timeCount = timeEntriesRaw.length
-    const activityCount = activitiesRaw.length
+    const paymentCount = paymentsRaw.length
     console.log('[ClioService] API responses received', {
       timeEntriesCount: timeCount,
-      activitiesCount: activityCount,
+      paymentsCount: paymentCount,
       timeEntrySample: timeEntriesRaw.slice(0, 2).map(e => ({
         keys: Object.keys(e),
         date: (e as any).date,
@@ -54,47 +53,40 @@ class ClioService {
         duration: (e as any).duration,
         user: (e as any).user?.name,
       })),
-      activitySample: activitiesRaw.slice(0, 2).map(a => ({
-        keys: Object.keys(a),
-        date: (a as any).date,
-        occurred_at: (a as any).occurred_at,
-        created_at: (a as any).created_at,
-        total: (a as any).total,
-        amount: (a as any).amount,
-        price: (a as any).price,
-        type: (a as any).type,
+      paymentSample: paymentsRaw.slice(0, 2).map(p => ({
+        keys: Object.keys(p),
+        date: (p as any).date,
+        applied_date: (p as any).applied_date,
+        created_at: (p as any).created_at,
+        amount: (p as any).amount,
       })),
     })
 
-    return this.transformData(timeEntriesResponse.data.data || [], activitiesResponse.data.data || [])
+    return this.transformData(timeEntriesResponse.data.data || [], paymentsResponse.data.data || [])
   }
 
-  transformData(timeEntries: ClioTimeEntry[], activities: ClioActivity[]): DashboardData {
+  transformData(timeEntries: ClioTimeEntry[], payments: ClioBillPayment[]): DashboardData {
     const now = new Date()
     const currentMonth = now.getMonth()
     const currentYear = now.getFullYear()
     console.log('[ClioService] transformData()', {
       timeEntries: timeEntries.length,
-      activities: activities.length,
+      payments: payments.length,
       currentMonth: currentMonth + 1,
       currentYear,
     })
 
-    // Calculate monthly deposits
-    const monthlyDeposits = activities
-      .filter(activity => {
-        const effectiveDateStr = activity.occurred_at || activity.date || activity.created_at
-        const activityDate = effectiveDateStr ? new Date(effectiveDateStr) : new Date(NaN)
-        return activityDate.getMonth() === currentMonth && 
-               activityDate.getFullYear() === currentYear
+    // Calculate monthly deposits from bill_payments
+    const monthlyDeposits = payments
+      .filter(payment => {
+        const effectiveDateStr = payment.applied_date || payment.date || payment.created_at
+        const paymentDate = effectiveDateStr ? new Date(effectiveDateStr) : new Date(NaN)
+        return paymentDate.getMonth() === currentMonth && 
+               paymentDate.getFullYear() === currentYear
       })
-      .reduce((sum, activity) => {
-        const value =
-          (typeof activity.total === 'number' ? activity.total : undefined) ??
-          (typeof activity.amount === 'number' ? activity.amount : undefined) ??
-          (typeof activity.price === 'number' ? activity.price : undefined) ??
-          0
-        return sum + value
+      .reduce((sum, payment) => {
+        const amount = typeof payment.amount === 'number' ? payment.amount : 0
+        return sum + amount
       }, 0)
     console.log('[ClioService] Monthly deposits (current month)', { monthlyDeposits })
 
@@ -123,7 +115,7 @@ class ClioService {
     console.log('[ClioService] Attorney billable hours (top 5)', attorneyBillableHours.slice(0, 5))
 
     // Calculate weekly revenue (last 12 weeks)
-    const weeklyRevenue = this.calculateWeeklyRevenue(activities)
+    const weeklyRevenue = this.calculateWeeklyRevenue(payments)
     console.log('[ClioService] Weekly revenue weeks', weeklyRevenue.length)
 
     // Calculate YTD time entries
@@ -131,7 +123,7 @@ class ClioService {
     console.log('[ClioService] YTD time months', ytdTime.length)
 
     // Calculate YTD revenue
-    const ytdRevenue = this.calculateYTDRevenue(activities)
+    const ytdRevenue = this.calculateYTDRevenue(payments)
     console.log('[ClioService] YTD revenue months', ytdRevenue.length)
 
     return {
@@ -143,23 +135,22 @@ class ClioService {
     }
   }
 
-  calculateWeeklyRevenue(activities: ClioActivity[]) {
+  calculateWeeklyRevenue(payments: ClioBillPayment[]) {
     const weeklyMap = new Map<string, number>()
     const now = new Date()
 
-    activities.forEach(activity => {
-      const effectiveDateStr = activity.occurred_at || activity.date || activity.created_at
-      const activityDate = effectiveDateStr ? new Date(effectiveDateStr) : new Date(NaN)
-      const weekStart = this.getWeekStart(activityDate)
+    payments.forEach(payment => {
+      const effectiveDateStr = payment.applied_date || payment.date || payment.created_at
+      const paymentDate = effectiveDateStr ? new Date(effectiveDateStr) : new Date(NaN)
+      
+      if (isNaN(paymentDate.getTime())) return // Skip invalid dates
+      
+      const weekStart = this.getWeekStart(paymentDate)
       const weekKey = this.formatDate(weekStart)
       
-      const deposit =
-        (typeof activity.total === 'number' ? activity.total : undefined) ??
-        (typeof activity.amount === 'number' ? activity.amount : undefined) ??
-        (typeof activity.price === 'number' ? activity.price : undefined) ??
-        0
+      const amount = typeof payment.amount === 'number' ? payment.amount : 0
       const current = weeklyMap.get(weekKey) || 0
-      weeklyMap.set(weekKey, current + deposit)
+      weeklyMap.set(weekKey, current + amount)
     })
 
     // Get last 12 weeks
@@ -202,21 +193,20 @@ class ClioService {
       .sort((a, b) => a.date.localeCompare(b.date))
   }
 
-  calculateYTDRevenue(activities: ClioActivity[]) {
+  calculateYTDRevenue(payments: ClioBillPayment[]) {
     const monthlyMap = new Map<string, number>()
 
-    activities.forEach(activity => {
-      const effectiveDateStr = activity.occurred_at || activity.date || activity.created_at
+    payments.forEach(payment => {
+      const effectiveDateStr = payment.applied_date || payment.date || payment.created_at
       const date = effectiveDateStr ? new Date(effectiveDateStr) : new Date(NaN)
+      
+      if (isNaN(date.getTime())) return // Skip invalid dates
+      
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
       
-      const deposit =
-        (typeof activity.total === 'number' ? activity.total : undefined) ??
-        (typeof activity.amount === 'number' ? activity.amount : undefined) ??
-        (typeof activity.price === 'number' ? activity.price : undefined) ??
-        0
+      const amount = typeof payment.amount === 'number' ? payment.amount : 0
       const current = monthlyMap.get(monthKey) || 0
-      monthlyMap.set(monthKey, current + deposit)
+      monthlyMap.set(monthKey, current + amount)
     })
 
     return Array.from(monthlyMap.entries())
