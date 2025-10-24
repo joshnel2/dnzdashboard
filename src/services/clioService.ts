@@ -15,11 +15,15 @@ const clioApi = axios.create({
 class ClioService {
   async getDashboardData(): Promise<DashboardData> {
     const now = new Date()
-    const startOfYear = new Date(now.getFullYear(), 0, 1)
+    // Fetch data from last 2 years to ensure we get something
+    const twoYearsAgo = new Date(now.getFullYear() - 2, 0, 1)
+    
     console.log('[ClioService] getDashboardData() START', {
-      since: startOfYear.toISOString(),
-      baseUrl: API_BASE_URL,
+      since: twoYearsAgo.toISOString(),
       currentDate: now.toISOString(),
+      currentYear: now.getFullYear(),
+      currentMonth: now.getMonth() + 1,
+      baseUrl: API_BASE_URL,
     })
 
     try {
@@ -31,8 +35,8 @@ class ClioService {
       try {
         paymentsResponse = await clioApi.get<{ data: ClioBillPayment[] }>('/bill_payments.json', {
           params: {
-            since: startOfYear.toISOString(),
-            fields: 'date,amount,applied_date,created_at',
+            since: twoYearsAgo.toISOString(),
+            fields: 'id,date,amount,applied_date,created_at',
           },
         })
         console.log('[ClioService] /bill_payments.json succeeded')
@@ -44,9 +48,9 @@ class ClioService {
         // Fallback to activities endpoint
         paymentsResponse = await clioApi.get<{ data: any[] }>('/activities.json', {
           params: {
-            since: startOfYear.toISOString(),
+            since: twoYearsAgo.toISOString(),
             type: 'Payment',
-            fields: 'date,total,amount,price,occurred_at,created_at',
+            fields: 'id,date,total,amount,price,occurred_at,created_at',
           },
         })
         console.log('[ClioService] /activities.json fallback succeeded')
@@ -54,8 +58,8 @@ class ClioService {
       
       const timeEntriesResponse = await clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
         params: {
-          since: startOfYear.toISOString(),
-          fields: 'user{id,name},date,quantity,price,occurred_at,duration',
+          since: twoYearsAgo.toISOString(),
+          fields: 'id,user{id,name},date,quantity,price,occurred_at,duration,created_at',
         },
       })
       
@@ -79,29 +83,48 @@ class ClioService {
         },
       })
       
-      console.log('[ClioService] API responses received', {
-        timeEntriesCount: timeCount,
-        paymentsCount: paymentCount,
-        timeEntrySample: timeEntriesRaw.slice(0, 3).map(e => ({
-          keys: Object.keys(e),
-          date: (e as any).date,
-          occurred_at: (e as any).occurred_at,
-          created_at: (e as any).created_at,
-          quantity: (e as any).quantity,
-          duration: (e as any).duration,
-          user: (e as any).user?.name,
-        })),
-        paymentSample: paymentsRaw.slice(0, 3).map((p: any) => ({
-          keys: Object.keys(p),
-          allFields: p,
-          date: (p as any).date,
-          applied_date: (p as any).applied_date,
-          created_at: (p as any).created_at,
-          amount: (p as any).amount,
-          total: (p as any).total,
-          price: (p as any).price,
-        })),
-      })
+      console.log('==============================================')
+      console.log('📊 API RESPONSE SUMMARY')
+      console.log('==============================================')
+      console.log('⏰ Time Entries Count:', timeCount)
+      console.log('💰 Payments Count:', paymentCount)
+      console.log('==============================================')
+      
+      if (timeCount > 0) {
+        console.log('📝 Time Entry Samples (first 3):')
+        timeEntriesRaw.slice(0, 3).forEach((e: any, i: number) => {
+          console.log(`  Entry ${i + 1}:`, {
+            date: e.date,
+            occurred_at: e.occurred_at,
+            created_at: e.created_at,
+            quantity: e.quantity,
+            duration: e.duration,
+            user: e.user?.name,
+            allKeys: Object.keys(e),
+          })
+        })
+      } else {
+        console.warn('⚠️ NO TIME ENTRIES returned from API')
+      }
+      
+      if (paymentCount > 0) {
+        console.log('💵 Payment Samples (first 3):')
+        paymentsRaw.slice(0, 3).forEach((p: any, i: number) => {
+          console.log(`  Payment ${i + 1}:`, {
+            date: p.date,
+            applied_date: p.applied_date,
+            created_at: p.created_at,
+            amount: p.amount,
+            total: p.total,
+            price: p.price,
+            allKeys: Object.keys(p),
+            fullObject: p,
+          })
+        })
+      } else {
+        console.warn('⚠️ NO PAYMENTS returned from API')
+      }
+      console.log('==============================================')
       
       // Normalize payments data (handle both bill_payments and activities response)
       const normalizedPayments = paymentsRaw.map((p: any) => ({
