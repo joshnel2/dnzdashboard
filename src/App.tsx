@@ -24,15 +24,10 @@ function App() {
         setData(dashboardData)
         setLoading(false)
       } catch (err: any) {
-        if (err.response?.status === 401) {
-          localStorage.removeItem('clio_access_token')
-          setNeedsAuth(true)
-          setLoading(false)
-        } else {
-          // Just use sample data if API fails
-          setData(clioService.getSampleData())
-          setLoading(false)
-        }
+        // On any failure, require re-authentication to ensure real data loads
+        localStorage.removeItem('clio_access_token')
+        setNeedsAuth(true)
+        setLoading(false)
       }
     }
 

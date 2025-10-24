@@ -1,8 +1,16 @@
 import axios from 'axios'
 import type { DashboardData, ClioTimeEntry, ClioActivity } from '../types'
 
-// Use hardcoded base URL - simpler and more reliable
-const API_BASE_URL = 'https://app.clio.com/api/v4'
+// Use CLIO_BASE_URL from localStorage if available (set after OAuth), fallback to default
+const getApiBaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('clio_base_url');
+    if (stored) return `${stored.replace(/\/$/, '')}/api/v4`;
+  }
+  return 'https://app.clio.com/api/v4';
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 // Get token from localStorage only (set by OAuth flow)
 const getAccessToken = () => {
