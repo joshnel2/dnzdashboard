@@ -73,7 +73,7 @@ class ClioService {
         return activityDate.getMonth() === currentMonth && 
                activityDate.getFullYear() === currentYear
       })
-      .reduce((sum, activity) => sum + activity.total, 0)
+      .reduce((sum, activity) => sum + (activity.amount ?? activity.total ?? 0), 0)
 
     // Group billable hours by attorney (CURRENT MONTH ONLY)
     const attorneyHoursMap = new Map<string, number>()
