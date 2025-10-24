@@ -93,14 +93,28 @@ class ClioService {
         })),
         paymentSample: paymentsRaw.slice(0, 3).map(p => ({
           keys: Object.keys(p),
+          allFields: p,
           date: (p as any).date,
           applied_date: (p as any).applied_date,
           created_at: (p as any).created_at,
           amount: (p as any).amount,
+          total: (p as any).total,
+          price: (p as any).price,
         })),
       })
+      
+      // Normalize payments data (handle both bill_payments and activities response)
+      const normalizedPayments = paymentsRaw.map((p: any) => ({
+        id: p.id,
+        date: p.date,
+        applied_date: p.applied_date || p.occurred_at,
+        created_at: p.created_at,
+        amount: p.amount || p.total || p.price || 0,
+      }))
+      
+      console.log('[ClioService] Normalized payments sample:', normalizedPayments.slice(0, 3))
 
-      const transformedData = this.transformData(timeEntriesResponse.data.data || [], paymentsResponse.data.data || [])
+      const transformedData = this.transformData(timeEntriesResponse.data.data || [], normalizedPayments)
       console.log('[ClioService] Data transformation complete:', {
         monthlyDeposits: transformedData.monthlyDeposits,
         attorneyCount: transformedData.attorneyBillableHours.length,
