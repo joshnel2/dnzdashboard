@@ -91,7 +91,7 @@ class ClioService {
           duration: (e as any).duration,
           user: (e as any).user?.name,
         })),
-        paymentSample: paymentsRaw.slice(0, 3).map(p => ({
+        paymentSample: paymentsRaw.slice(0, 3).map((p: any) => ({
           keys: Object.keys(p),
           allFields: p,
           date: (p as any).date,
