@@ -141,9 +141,20 @@ class ClioService {
 
     try {
       // Fetch time entries
+      console.log('⏱️  Requesting time entries with params:', {
+        since: startOfYear.toISOString(),
+        fields: 'user{id,name},date,quantity,price'
+      })
+      
       const timeEntries = await this.fetchAllPaginated<ClioTimeEntry>('/time_entries.json', {
         since: startOfYear.toISOString(),
         fields: 'user{id,name},date,quantity,price',
+      })
+      
+      console.log('⏱️  Time entries received:', {
+        count: timeEntries.length,
+        sample: timeEntries.slice(0, 3),
+        allDates: timeEntries.map(e => e.date).slice(0, 20)
       })
       
       // Try to fetch activities/payments - try multiple endpoints if needed
@@ -246,15 +257,44 @@ class ClioService {
 
   transformData(timeEntries: ClioTimeEntry[], activities: ClioActivity[]): DashboardData {
     console.log('🔄 [ClioService] Starting data transformation...')
+    console.log('📥 RAW INPUT DATA:', {
+      timeEntriesCount: timeEntries.length,
+      activitiesCount: activities.length,
+      firstTimeEntry: timeEntries[0],
+      lastTimeEntry: timeEntries[timeEntries.length - 1],
+      firstActivity: activities[0],
+      lastActivity: activities[activities.length - 1]
+    })
+    
+    // Log ALL dates in time entries
+    if (timeEntries.length > 0) {
+      const timeEntryDates = timeEntries.map(e => e.date).sort()
+      console.log('📅 Time Entry Date Range:', {
+        earliest: timeEntryDates[0],
+        latest: timeEntryDates[timeEntryDates.length - 1],
+        sampleDates: timeEntryDates.slice(0, 10)
+      })
+    }
+    
+    // Log ALL dates in activities
+    if (activities.length > 0) {
+      const activityDates = activities.map(a => a.date).sort()
+      console.log('📅 Activity Date Range:', {
+        earliest: activityDates[0],
+        latest: activityDates[activityDates.length - 1],
+        sampleDates: activityDates.slice(0, 10)
+      })
+    }
     
     const now = new Date()
     const currentMonth = now.getMonth()
     const currentYear = now.getFullYear()
     
-    console.log('📅 Current period:', {
+    console.log('📅 Current period (what we are filtering for):', {
       month: currentMonth + 1,
       year: currentYear,
-      monthName: new Date(currentYear, currentMonth).toLocaleDateString('en-US', { month: 'long' })
+      monthName: new Date(currentYear, currentMonth).toLocaleDateString('en-US', { month: 'long' }),
+      todayDate: now.toISOString()
     })
 
     // Calculate monthly deposits
