@@ -182,11 +182,19 @@ class ClioService {
     const monthlyMap = new Map<string, number>()
 
     timeEntries.forEach(entry => {
-      const date = new Date(entry.date)
+      const effectiveDateStr = entry.occurred_at || entry.date || (entry as any).created_at
+      const date = effectiveDateStr ? new Date(effectiveDateStr) : new Date(NaN)
+      
+      if (isNaN(date.getTime())) return // Skip invalid dates
+      
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
       
+      const quantity = typeof entry.quantity === 'number' ? entry.quantity : undefined
+      const duration = typeof (entry as any).duration === 'number' ? (entry as any).duration : undefined
+      const hours = quantity ?? (duration !== undefined ? duration / 3600 : 0)
+      
       const current = monthlyMap.get(monthKey) || 0
-      monthlyMap.set(monthKey, current + entry.quantity)
+      monthlyMap.set(monthKey, current + hours)
     })
 
     return Array.from(monthlyMap.entries())
