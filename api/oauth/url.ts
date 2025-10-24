@@ -11,7 +11,8 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'Client ID not configured' });
   }
 
-  const authUrl = `${baseUrl}/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+  const scope = encodeURIComponent('read:time_entries read:activities read:users');
+  const authUrl = `${baseUrl}/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}`;
 
   return res.json({ authUrl });
 }

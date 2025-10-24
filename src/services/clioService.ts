@@ -44,14 +44,16 @@ class ClioService {
     const [timeEntriesResponse, activitiesResponse] = await Promise.all([
       clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
         params: {
-          since: startOfYear.toISOString(),
+          // Clio v4: filter using gte on date
+          'date[gte]': startOfYear.toISOString().slice(0, 10),
           fields: 'user{id,name},date,quantity,price',
         },
       }),
       clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
         params: {
-          since: startOfYear.toISOString(),
+          'date[gte]': startOfYear.toISOString().slice(0, 10),
           type: 'Payment',
+          fields: 'date,amount,type',
         },
       })
     ])
@@ -118,7 +120,7 @@ class ClioService {
       const weekKey = this.formatDate(weekStart)
       
       const current = weeklyMap.get(weekKey) || 0
-      weeklyMap.set(weekKey, current + activity.total)
+      weeklyMap.set(weekKey, current + (activity.amount || 0))
     })
 
     // Get last 12 weeks
@@ -161,7 +163,7 @@ class ClioService {
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
       
       const current = monthlyMap.get(monthKey) || 0
-      monthlyMap.set(monthKey, current + activity.total)
+      monthlyMap.set(monthKey, current + (activity.amount || 0))
     })
 
     return Array.from(monthlyMap.entries())
