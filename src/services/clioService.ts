@@ -91,13 +91,15 @@ class ClioService {
       
       // Check if we got HTML instead of JSON (authentication issue)
       const timeResponseIsHtml = typeof timeEntriesResponse.data === 'string' && 
-                                  timeEntriesResponse.data.includes('<!DOCTYPE html>')
+                                  (timeEntriesResponse.data as string).includes('<!DOCTYPE html>')
       const paymentsResponseIsHtml = typeof paymentsResponse.data === 'string' && 
-                                      paymentsResponse.data.includes('<!DOCTYPE html>')
+                                      (paymentsResponse.data as string).includes('<!DOCTYPE html>')
       
       if (timeResponseIsHtml || paymentsResponseIsHtml) {
         console.error('❌ API returned HTML instead of JSON - Authentication required!')
-        throw new Error('Authentication required: API returned HTML instead of JSON')
+        const error: any = new Error('Authentication required')
+        error.response = { status: 401 }
+        throw error
       }
       
       console.log('==============================================')
