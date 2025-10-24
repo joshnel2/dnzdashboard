@@ -7,6 +7,11 @@ interface YTDTimeProps {
 }
 
 function YTDTime({ data }: YTDTimeProps) {
+  console.log('📊 [YTDTime] Rendering with data:', {
+    dataLength: data?.length || 0,
+    data: data
+  })
+  
   const formatMonth = (dateStr: string) => {
     const [year, month] = dateStr.split('-')
     const date = new Date(parseInt(year), parseInt(month) - 1)

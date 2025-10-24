@@ -7,6 +7,11 @@ interface YTDRevenueProps {
 }
 
 function YTDRevenue({ data }: YTDRevenueProps) {
+  console.log('📊 [YTDRevenue] Rendering with data:', {
+    dataLength: data?.length || 0,
+    data: data
+  })
+  
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
