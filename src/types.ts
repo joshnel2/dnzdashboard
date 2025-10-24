@@ -37,11 +37,24 @@ export interface ClioTimeEntry {
   date: string
   quantity: number
   price: number
+  occurred_at?: string
 }
 
 export interface ClioActivity {
   id: number
   date: string
-  total: number
-  type: string
+  total?: number
+  amount?: number
+  price?: number
+  type?: string
+  occurred_at?: string
+  created_at?: string
+}
+
+export interface ClioBillPayment {
+  id: number
+  date: string
+  amount: number
+  applied_date?: string
+  created_at?: string
 }
