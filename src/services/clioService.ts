@@ -16,53 +16,110 @@ class ClioService {
   async getDashboardData(): Promise<DashboardData> {
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
-    console.log('[ClioService] getDashboardData()', {
+    console.log('[ClioService] getDashboardData() START', {
       since: startOfYear.toISOString(),
       baseUrl: API_BASE_URL,
+      currentDate: now.toISOString(),
     })
 
-    // Use bill_payments endpoint for actual payment/deposit data
-    const [timeEntriesResponse, paymentsResponse] = await Promise.all([
-      clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
+    try {
+      // Try bill_payments endpoint first for actual payment/deposit data
+      console.log('[ClioService] Making API requests to Clio...')
+      console.log('[ClioService] Attempting /bill_payments.json endpoint...')
+      
+      let paymentsResponse: any
+      try {
+        paymentsResponse = await clioApi.get<{ data: ClioBillPayment[] }>('/bill_payments.json', {
+          params: {
+            since: startOfYear.toISOString(),
+            fields: 'date,amount,applied_date,created_at',
+          },
+        })
+        console.log('[ClioService] /bill_payments.json succeeded')
+      } catch (billPaymentError: any) {
+        console.warn('[ClioService] /bill_payments.json failed, trying /activities.json as fallback', {
+          status: billPaymentError.response?.status,
+          message: billPaymentError.message,
+        })
+        // Fallback to activities endpoint
+        paymentsResponse = await clioApi.get<{ data: any[] }>('/activities.json', {
+          params: {
+            since: startOfYear.toISOString(),
+            type: 'Payment',
+            fields: 'date,total,amount,price,occurred_at,created_at',
+          },
+        })
+        console.log('[ClioService] /activities.json fallback succeeded')
+      }
+      
+      const timeEntriesResponse = await clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
         params: {
           since: startOfYear.toISOString(),
           fields: 'user{id,name},date,quantity,price,occurred_at,duration',
         },
-      }),
-      clioApi.get<{ data: ClioBillPayment[] }>('/bill_payments.json', {
-        params: {
-          since: startOfYear.toISOString(),
-          fields: 'date,amount,applied_date,created_at',
+      })
+      
+      console.log('[ClioService] All API requests completed successfully')
+
+      const timeEntriesRaw = timeEntriesResponse.data?.data || []
+      const paymentsRaw = paymentsResponse.data?.data || []
+      const timeCount = timeEntriesRaw.length
+      const paymentCount = paymentsRaw.length
+      
+      console.log('[ClioService] Raw API response structure:', {
+        timeEntriesResponse: {
+          hasData: !!timeEntriesResponse.data,
+          hasDataArray: !!timeEntriesResponse.data?.data,
+          count: timeCount,
+        },
+        paymentsResponse: {
+          hasData: !!paymentsResponse.data,
+          hasDataArray: !!paymentsResponse.data?.data,
+          count: paymentCount,
         },
       })
-    ])
+      
+      console.log('[ClioService] API responses received', {
+        timeEntriesCount: timeCount,
+        paymentsCount: paymentCount,
+        timeEntrySample: timeEntriesRaw.slice(0, 3).map(e => ({
+          keys: Object.keys(e),
+          date: (e as any).date,
+          occurred_at: (e as any).occurred_at,
+          created_at: (e as any).created_at,
+          quantity: (e as any).quantity,
+          duration: (e as any).duration,
+          user: (e as any).user?.name,
+        })),
+        paymentSample: paymentsRaw.slice(0, 3).map(p => ({
+          keys: Object.keys(p),
+          date: (p as any).date,
+          applied_date: (p as any).applied_date,
+          created_at: (p as any).created_at,
+          amount: (p as any).amount,
+        })),
+      })
 
-    const timeEntriesRaw = timeEntriesResponse.data?.data || []
-    const paymentsRaw = paymentsResponse.data?.data || []
-    const timeCount = timeEntriesRaw.length
-    const paymentCount = paymentsRaw.length
-    console.log('[ClioService] API responses received', {
-      timeEntriesCount: timeCount,
-      paymentsCount: paymentCount,
-      timeEntrySample: timeEntriesRaw.slice(0, 2).map(e => ({
-        keys: Object.keys(e),
-        date: (e as any).date,
-        occurred_at: (e as any).occurred_at,
-        created_at: (e as any).created_at,
-        quantity: (e as any).quantity,
-        duration: (e as any).duration,
-        user: (e as any).user?.name,
-      })),
-      paymentSample: paymentsRaw.slice(0, 2).map(p => ({
-        keys: Object.keys(p),
-        date: (p as any).date,
-        applied_date: (p as any).applied_date,
-        created_at: (p as any).created_at,
-        amount: (p as any).amount,
-      })),
-    })
-
-    return this.transformData(timeEntriesResponse.data.data || [], paymentsResponse.data.data || [])
+      const transformedData = this.transformData(timeEntriesResponse.data.data || [], paymentsResponse.data.data || [])
+      console.log('[ClioService] Data transformation complete:', {
+        monthlyDeposits: transformedData.monthlyDeposits,
+        attorneyCount: transformedData.attorneyBillableHours.length,
+        weeklyRevenueCount: transformedData.weeklyRevenue.length,
+        ytdTimeCount: transformedData.ytdTime.length,
+        ytdRevenueCount: transformedData.ytdRevenue.length,
+      })
+      
+      return transformedData
+    } catch (error: any) {
+      console.error('[ClioService] ERROR in getDashboardData:', {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url,
+      })
+      throw error
+    }
   }
 
   transformData(timeEntries: ClioTimeEntry[], payments: ClioBillPayment[]): DashboardData {
@@ -77,18 +134,37 @@ class ClioService {
     })
 
     // Calculate monthly deposits from bill_payments
-    const monthlyDeposits = payments
-      .filter(payment => {
-        const effectiveDateStr = payment.applied_date || payment.date || payment.created_at
-        const paymentDate = effectiveDateStr ? new Date(effectiveDateStr) : new Date(NaN)
-        return paymentDate.getMonth() === currentMonth && 
-               paymentDate.getFullYear() === currentYear
-      })
-      .reduce((sum, payment) => {
-        const amount = typeof payment.amount === 'number' ? payment.amount : 0
-        return sum + amount
-      }, 0)
-    console.log('[ClioService] Monthly deposits (current month)', { monthlyDeposits })
+    console.log('[ClioService] Processing monthly deposits...', {
+      totalPayments: payments.length,
+      targetMonth: currentMonth + 1,
+      targetYear: currentYear,
+    })
+    
+    const currentMonthPayments = payments.filter(payment => {
+      const effectiveDateStr = payment.applied_date || payment.date || payment.created_at
+      const paymentDate = effectiveDateStr ? new Date(effectiveDateStr) : new Date(NaN)
+      const isCurrentMonth = paymentDate.getMonth() === currentMonth && 
+             paymentDate.getFullYear() === currentYear
+      
+      if (isCurrentMonth) {
+        console.log('[ClioService] Payment in current month:', {
+          date: effectiveDateStr,
+          amount: payment.amount,
+        })
+      }
+      
+      return isCurrentMonth
+    })
+    
+    const monthlyDeposits = currentMonthPayments.reduce((sum, payment) => {
+      const amount = typeof payment.amount === 'number' ? payment.amount : 0
+      return sum + amount
+    }, 0)
+    
+    console.log('[ClioService] Monthly deposits (current month)', { 
+      monthlyDeposits,
+      paymentsInMonth: currentMonthPayments.length,
+    })
 
     // Group billable hours by attorney (CURRENT MONTH ONLY)
     const attorneyHoursMap = new Map<string, number>()
