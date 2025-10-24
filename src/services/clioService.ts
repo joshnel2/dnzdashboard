@@ -450,9 +450,16 @@ class ClioService {
     
     console.log('📊 Monthly revenue map:', Array.from(monthlyMap.entries()))
 
-    return Array.from(monthlyMap.entries())
+    const result = Array.from(monthlyMap.entries())
       .map(([date, amount]) => ({ date, amount }))
       .sort((a, b) => a.date.localeCompare(b.date))
+    
+    // Get last 12 months if we have more than that
+    if (result.length > 12) {
+      return result.slice(-12)
+    }
+    
+    return result
   }
 
   getWeekStart(date: Date): Date {
