@@ -129,25 +129,26 @@ class ClioService {
 
   async getDashboardData(): Promise<DashboardData> {
     const now = new Date()
-    const startOfYear = new Date(now.getFullYear(), 0, 1)
+    // Fetch last 12 months instead of just current year
+    const twelveMonthsAgo = new Date(now)
+    twelveMonthsAgo.setMonth(now.getMonth() - 12)
     
     console.log('🔍 [ClioService] Fetching dashboard data...')
-    console.log('📅 Date range:', {
-      startOfYear: startOfYear.toISOString(),
-      now: now.toISOString(),
-      year: now.getFullYear(),
-      month: now.getMonth() + 1
+    console.log('📅 Date range (last 12 months):', {
+      since: twelveMonthsAgo.toISOString(),
+      until: now.toISOString(),
+      monthsBack: 12
     })
 
     try {
       // Fetch time entries
       console.log('⏱️  Requesting time entries with params:', {
-        since: startOfYear.toISOString(),
+        since: twelveMonthsAgo.toISOString(),
         fields: 'user{id,name},date,quantity,price'
       })
       
       const timeEntries = await this.fetchAllPaginated<ClioTimeEntry>('/time_entries.json', {
-        since: startOfYear.toISOString(),
+        since: twelveMonthsAgo.toISOString(),
         fields: 'user{id,name},date,quantity,price',
       })
       
@@ -163,7 +164,7 @@ class ClioService {
       try {
         console.log('💰 Trying activities endpoint with type=Payment...')
         activities = await this.fetchAllPaginated<ClioActivity>('/activities.json', {
-          since: startOfYear.toISOString(),
+          since: twelveMonthsAgo.toISOString(),
           type: 'Payment',
         })
         
@@ -173,7 +174,7 @@ class ClioService {
           // Try without type filter
           console.log('💰 Trying activities endpoint without type filter...')
           activities = await this.fetchAllPaginated<ClioActivity>('/activities.json', {
-            since: startOfYear.toISOString(),
+            since: twelveMonthsAgo.toISOString(),
           })
           
           if (activities.length > 0) {
@@ -199,7 +200,7 @@ class ClioService {
           try {
             console.log('💰 Trying bill_payments endpoint...')
             const billPayments = await this.fetchAllPaginated<any>('/bill_payments.json', {
-              created_since: startOfYear.toISOString(),
+              created_since: twelveMonthsAgo.toISOString(),
             })
             console.log(`💰 Bill payments endpoint returned ${billPayments.length} records`)
             
