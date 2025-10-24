@@ -75,13 +75,19 @@ class ClioService {
           hasData: !!timeEntriesResponse.data,
           hasDataArray: !!timeEntriesResponse.data?.data,
           count: timeCount,
+          fullResponse: timeEntriesResponse.data,
         },
         paymentsResponse: {
           hasData: !!paymentsResponse.data,
           hasDataArray: !!paymentsResponse.data?.data,
           count: paymentCount,
+          fullResponse: paymentsResponse.data,
         },
       })
+      
+      // Log the full raw response to see structure
+      console.log('🔍 FULL TIME ENTRIES RESPONSE:', timeEntriesResponse.data)
+      console.log('🔍 FULL PAYMENTS RESPONSE:', paymentsResponse.data)
       
       console.log('==============================================')
       console.log('📊 API RESPONSE SUMMARY')
