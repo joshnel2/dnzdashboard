@@ -11,25 +11,31 @@ function App() {
 
   useEffect(() => {
     const fetchData = async () => {
-      const token = localStorage.getItem('clio_access_token')
-      
-      if (!token) {
-        setNeedsAuth(true)
-        setLoading(false)
-        return
-      }
-      
       try {
         const dashboardData = await clioService.getDashboardData()
+        console.log('[App] Dashboard data loaded', {
+          monthlyDeposits: dashboardData.monthlyDeposits,
+          attorneys: dashboardData.attorneyBillableHours.length,
+          weeklyRevenueWeeks: dashboardData.weeklyRevenue.length,
+          ytdTimeMonths: dashboardData.ytdTime.length,
+          ytdRevenueMonths: dashboardData.ytdRevenue.length,
+        })
         setData(dashboardData)
         setLoading(false)
       } catch (err: any) {
         if (err.response?.status === 401) {
           localStorage.removeItem('clio_access_token')
           setNeedsAuth(true)
+          console.warn('[App] 401 from API - Clio auth required')
           setLoading(false)
         } else {
           // Just use sample data if API fails
+          console.error('[App] Failed to load dashboard data, using sample data', {
+            status: err.response?.status,
+            data: err.response?.data,
+            message: err.message,
+            stack: err.stack,
+          })
           setData(clioService.getSampleData())
           setLoading(false)
         }
