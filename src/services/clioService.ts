@@ -1,9 +1,6 @@
 import axios from 'axios'
 import type { DashboardData, ClioTimeEntry, ClioActivity } from '../types'
 
-// Use hardcoded base URL - simpler and more reliable
-const API_BASE_URL = 'https://app.clio.com/api/v4'
-
 // Get token from localStorage only (set by OAuth flow)
 const getAccessToken = () => {
   if (typeof window !== 'undefined') {
@@ -12,43 +9,23 @@ const getAccessToken = () => {
   return '';
 }
 
-const clioApi = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-// Add auth header dynamically
-clioApi.interceptors.request.use((config) => {
-  const token = getAccessToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-})
-
 class ClioService {
   async getDashboardData(): Promise<DashboardData> {
-    const now = new Date()
-    const startOfYear = new Date(now.getFullYear(), 0, 1)
+    const token = getAccessToken()
+    
+    if (!token) {
+      throw new Error('No access token available')
+    }
 
-    const [timeEntriesResponse, activitiesResponse] = await Promise.all([
-      clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
-        params: {
-          since: startOfYear.toISOString(),
-          fields: 'user{id,name},date,quantity,price',
-        },
-      }),
-      clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
-        params: {
-          since: startOfYear.toISOString(),
-          type: 'Payment',
-        },
-      })
-    ])
+    // Call our server-side proxy endpoint to avoid CORS issues
+    const response = await axios.post<{
+      timeEntries: ClioTimeEntry[]
+      activities: ClioActivity[]
+    }>('/api/clio/data', {
+      access_token: token
+    })
 
-    return this.transformData(timeEntriesResponse.data.data || [], activitiesResponse.data.data || [])
+    return this.transformData(response.data.timeEntries || [], response.data.activities || [])
   }
 
   transformData(timeEntries: ClioTimeEntry[], activities: ClioActivity[]): DashboardData {
