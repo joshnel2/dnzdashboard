@@ -1,10 +1,10 @@
 import axios from 'axios'
 import type { DashboardData, ClioTimeEntry, ClioActivity } from '../types'
 
-// HARDCODED: Use standard Clio API URL directly (no env vars needed on frontend)
-const API_BASE_URL = 'https://app.clio.com/api/v4';
+// Use backend proxy to avoid CORS issues
+const API_BASE_URL = '/api/clio';
 
-console.log('[ClioService] Using HARDCODED API_BASE_URL:', API_BASE_URL);
+console.log('[ClioService] Using PROXY API_BASE_URL:', API_BASE_URL);
 
 // Get token from localStorage only (set by OAuth flow)
 const getAccessToken = () => {
@@ -65,13 +65,13 @@ class ClioService {
 
     try {
       const [timeEntriesResponse, activitiesResponse] = await Promise.all([
-        clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
+        clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries', {
           params: {
             since: startOfYear.toISOString(),
             fields: 'user{id,name},date,quantity,price',
           },
         }),
-        clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
+        clioApi.get<{ data: ClioActivity[] }>('/activities', {
           params: {
             since: startOfYear.toISOString(),
             type: 'Payment',
