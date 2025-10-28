@@ -65,7 +65,7 @@ class ClioService {
 
     try {
       const [timeEntriesResponse, activitiesResponse] = await Promise.all([
-        clioApi.get<{ data: ClioTimeEntry[] }>('/time-entries', {
+        clioApi.get<{ data: ClioTimeEntry[] }>('/timeentries', {
           params: {
             since: startOfYear.toISOString(),
             fields: 'user{id,name},date,quantity,price',
