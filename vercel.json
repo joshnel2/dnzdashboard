@@ -4,21 +4,7 @@
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "framework": "vite",
-  "functions": {
-    "api/**/*.ts": {
-      "memory": 1024,
-      "maxDuration": 10
-    }
-  },
   "rewrites": [
-    {
-      "source": "/api/clio/time-entries",
-      "destination": "/api/clio/time-entries"
-    },
-    {
-      "source": "/api/clio/activities",
-      "destination": "/api/clio/activities"
-    },
     {
       "source": "/api/(.*)",
       "destination": "/api/$1"

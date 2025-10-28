@@ -1,8 +1,8 @@
 import axios from 'axios'
 import type { DashboardData, ClioTimeEntry, ClioActivity } from '../types'
 
-// Use backend proxy to avoid CORS issues
-const API_BASE_URL = '/api/clio';
+// Use backend proxy to avoid CORS issues - endpoints at root /api level
+const API_BASE_URL = '/api';
 
 console.log('[ClioService] Using PROXY API_BASE_URL:', API_BASE_URL);
 
