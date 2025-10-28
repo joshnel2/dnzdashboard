@@ -1,17 +1,25 @@
 import axios from 'axios'
 import type { DashboardData, ClioTimeEntry, ClioActivity } from '../types'
 
-// Get base URL from environment or use default
-const getBaseUrl = () => {
-  if (typeof window !== 'undefined' && import.meta.env.VITE_CLIO_BASE_URL) {
-    return import.meta.env.VITE_CLIO_BASE_URL;
+// Fetch base URL from backend config API (uses Vercel env vars)
+let API_BASE_URL = 'https://app.clio.com/api/v4'; // Default fallback
+
+const initializeConfig = async () => {
+  try {
+    console.log('[ClioService] Fetching config from backend...');
+    const response = await fetch('/api/config');
+    const config = await response.json();
+    API_BASE_URL = config.apiUrl;
+    console.log('[ClioService] Config loaded:', { apiUrl: API_BASE_URL });
+  } catch (error) {
+    console.error('[ClioService] Failed to load config, using default:', error);
   }
-  return 'https://app.clio.com';
-}
+};
 
-const API_BASE_URL = `${getBaseUrl()}/api/v4`;
+// Initialize config immediately
+initializeConfig();
 
-console.log('[ClioService] Initializing with API_BASE_URL:', API_BASE_URL);
+console.log('[ClioService] Initial API_BASE_URL:', API_BASE_URL);
 
 // Get token from localStorage only (set by OAuth flow)
 const getAccessToken = () => {
@@ -62,6 +70,14 @@ clioApi.interceptors.response.use(
 class ClioService {
   async getDashboardData(): Promise<DashboardData> {
     console.log('[ClioService] getDashboardData() called');
+    
+    // Ensure config is loaded before making API calls
+    await initializeConfig();
+    
+    // Update axios base URL with loaded config
+    clioApi.defaults.baseURL = API_BASE_URL;
+    console.log('[ClioService] Using base URL:', API_BASE_URL);
+    
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
 
