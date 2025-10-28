@@ -5,21 +5,28 @@ function AuthButton() {
   const [loading, setLoading] = useState(false)
 
   const handleLogin = async () => {
+    console.log('[AuthButton] Login button clicked');
     setLoading(true)
     try {
+      console.log('[AuthButton] Fetching auth URL from /api/oauth/url');
       // Get auth URL from our serverless function
       const response = await fetch('/api/oauth/url')
       const data = await response.json()
       
+      console.log('[AuthButton] Auth URL response:', data);
+      
       if (data.authUrl) {
+        console.log('[AuthButton] Redirecting to Clio authorization page:', data.authUrl);
         // Redirect to Clio authorization page
         window.location.href = data.authUrl
       } else {
-        console.error('Failed to get auth URL')
+        console.error('[AuthButton] Failed to get auth URL:', data)
+        alert(`Failed to get auth URL: ${data.error || 'Unknown error'}`)
         setLoading(false)
       }
     } catch (error) {
-      console.error('Error initiating OAuth:', error)
+      console.error('[AuthButton] Error initiating OAuth:', error)
+      alert(`Error initiating OAuth: ${error}`)
       setLoading(false)
     }
   }

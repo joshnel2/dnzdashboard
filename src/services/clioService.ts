@@ -1,13 +1,24 @@
 import axios from 'axios'
 import type { DashboardData, ClioTimeEntry, ClioActivity } from '../types'
 
-// Use hardcoded base URL - simpler and more reliable
-const API_BASE_URL = 'https://app.clio.com/api/v4'
+// Get base URL from environment or use default
+const getBaseUrl = () => {
+  if (typeof window !== 'undefined' && import.meta.env.VITE_CLIO_BASE_URL) {
+    return import.meta.env.VITE_CLIO_BASE_URL;
+  }
+  return 'https://app.clio.com';
+}
+
+const API_BASE_URL = `${getBaseUrl()}/api/v4`;
+
+console.log('[ClioService] Initializing with API_BASE_URL:', API_BASE_URL);
 
 // Get token from localStorage only (set by OAuth flow)
 const getAccessToken = () => {
   if (typeof window !== 'undefined') {
-    return localStorage.getItem('clio_access_token') || '';
+    const token = localStorage.getItem('clio_access_token') || '';
+    console.log('[ClioService] Access token:', token ? `${token.substring(0, 10)}...` : 'NOT FOUND');
+    return token;
   }
   return '';
 }
@@ -24,31 +35,77 @@ clioApi.interceptors.request.use((config) => {
   const token = getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+    console.log('[ClioService] Request:', config.method?.toUpperCase(), config.url);
+  } else {
+    console.error('[ClioService] No access token available for request');
   }
   return config;
 })
 
+// Add response interceptor for logging
+clioApi.interceptors.response.use(
+  (response) => {
+    console.log('[ClioService] ✓ Response:', response.config.url, 'Status:', response.status);
+    return response;
+  },
+  (error) => {
+    console.error('[ClioService] ✗ Request failed:', {
+      url: error.config?.url,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data
+    });
+    return Promise.reject(error);
+  }
+)
+
 class ClioService {
   async getDashboardData(): Promise<DashboardData> {
+    console.log('[ClioService] getDashboardData() called');
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
 
-    const [timeEntriesResponse, activitiesResponse] = await Promise.all([
-      clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
-        params: {
-          since: startOfYear.toISOString(),
-          fields: 'user{id,name},date,quantity,price',
-        },
-      }),
-      clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
-        params: {
-          since: startOfYear.toISOString(),
-          type: 'Payment',
-        },
-      })
-    ])
+    console.log('[ClioService] Fetching data since:', startOfYear.toISOString());
 
-    return this.transformData(timeEntriesResponse.data.data || [], activitiesResponse.data.data || [])
+    try {
+      const [timeEntriesResponse, activitiesResponse] = await Promise.all([
+        clioApi.get<{ data: ClioTimeEntry[] }>('/time_entries.json', {
+          params: {
+            since: startOfYear.toISOString(),
+            fields: 'user{id,name},date,quantity,price',
+          },
+        }),
+        clioApi.get<{ data: ClioActivity[] }>('/activities.json', {
+          params: {
+            since: startOfYear.toISOString(),
+            type: 'Payment',
+          },
+        })
+      ]);
+
+      console.log('[ClioService] Data fetched successfully:', {
+        timeEntries: timeEntriesResponse.data.data?.length || 0,
+        activities: activitiesResponse.data.data?.length || 0
+      });
+
+      const transformedData = this.transformData(
+        timeEntriesResponse.data.data || [], 
+        activitiesResponse.data.data || []
+      );
+
+      console.log('[ClioService] Data transformed:', {
+        monthlyDeposits: transformedData.monthlyDeposits,
+        attorneyCount: transformedData.attorneyBillableHours.length,
+        weeklyRevenuePoints: transformedData.weeklyRevenue.length,
+        ytdTimePoints: transformedData.ytdTime.length,
+        ytdRevenuePoints: transformedData.ytdRevenue.length
+      });
+
+      return transformedData;
+    } catch (error: any) {
+      console.error('[ClioService] Error fetching dashboard data:', error);
+      throw error;
+    }
   }
 
   transformData(timeEntries: ClioTimeEntry[], activities: ClioActivity[]): DashboardData {
