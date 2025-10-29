@@ -45,3 +45,13 @@ export interface ClioActivity {
   total: number
   type: string
 }
+
+// Minimal allocation shape used for revenue/deposits
+export interface ClioAllocation {
+  id: number
+  amount: number
+  bill_id: number
+  applied_at?: string
+  date?: string
+  created_at?: string
+}
