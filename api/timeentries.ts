@@ -32,7 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (typeof per_page === 'string' && per_page) params.set('per_page', per_page)
   if (typeof fields === 'string' && fields) params.set('fields', fields)
 
-  const url = `${CLIO_BASE_URL}/time_entries.json?${params.toString()}`
+  const url = `${CLIO_BASE_URL}/time_entries?${params.toString()}`
 
   console.log('[API][timeentries] → Forwarding to Clio:', url)
   console.log('[API][timeentries] → Token:', maskToken(bearer.replace('Bearer ', '')))

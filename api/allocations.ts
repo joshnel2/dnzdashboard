@@ -55,7 +55,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(resp.status).json({ error: 'Clio error', details: data })
     }
 
-    const items = Array.isArray(data?.data) ? data.data : []
+    const rawItems = Array.isArray(data?.data) ? data.data : []
+
+    // Normalize to { id, date, total, type }
+    const items = rawItems.map((item: any) => {
+      const total = typeof item.amount === 'number' ? item.amount
+        : typeof item.amount_cents === 'number' ? item.amount_cents / 100
+        : typeof item.total === 'number' ? item.total
+        : 0
+      const date = item.applied_at || item.date || item.created_at || null
+      return { id: item.id, date, total, type: 'Payment' }
+    })
+
     console.log('[API][allocations] ✓ OK', { status: resp.status, count: items.length })
 
     return res.status(200).json({ data: items })

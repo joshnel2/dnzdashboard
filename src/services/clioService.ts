@@ -38,6 +38,9 @@ class ClioService {
   async getDashboardData(): Promise<DashboardData> {
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
+    const formatYmd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const startDate = formatYmd(startOfYear)
+    const endDate = formatYmd(now)
 
     // Diagnostics in browser console
     // eslint-disable-next-line no-console
@@ -47,7 +50,7 @@ class ClioService {
     // eslint-disable-next-line no-console
     console.log('[ClioService] Axios baseURL:', clioApi.defaults.baseURL)
     // eslint-disable-next-line no-console
-    console.log('[ClioService] Fetching data since:', startOfYear.toISOString())
+    console.log('[ClioService] Using range:', { startDate, endDate })
     // eslint-disable-next-line no-console
     console.log('[ClioService] Access token:', maskToken(getAccessToken()))
 
@@ -58,20 +61,27 @@ class ClioService {
         '/timeentries',
         {
           params: {
-            since: startOfYear.toISOString(),
+            start_date: startDate,
+            end_date: endDate,
+            page: 1,
+            per_page: 200,
             fields: 'user{id,name},date,quantity,price',
           },
         }
       )
 
       // eslint-disable-next-line no-console
-      console.log('[ClioService] Request: GET /activities')
+      console.log('[ClioService] Request: GET /allocations')
       const activitiesPromise = clioApi.get<{ data: ClioActivity[] }>(
-        '/activities',
+        '/allocations',
         {
           params: {
-            since: startOfYear.toISOString(),
-            type: 'Payment',
+            start_date: startDate,
+            end_date: endDate,
+            page: 1,
+            per_page: 200,
+            // fields needed to compute totals and dates
+            fields: 'amount,bill{id},applied_at,created_at,date',
           },
         }
       )
