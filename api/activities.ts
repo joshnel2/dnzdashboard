@@ -22,11 +22,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Missing Authorization token' })
   }
 
-  const { since, type } = req.query
+  const { since, start_date, end_date, page, per_page, fields, type } = req.query
   const typeStr = typeof type === 'string' ? type : ''
 
   const params = new URLSearchParams()
   if (typeof since === 'string' && since) params.set('since', since)
+  if (typeof start_date === 'string' && start_date) params.set('start_date', start_date)
+  if (typeof end_date === 'string' && end_date) params.set('end_date', end_date)
+  if (typeof page === 'string' && page) params.set('page', page)
+  if (typeof per_page === 'string' && per_page) params.set('per_page', per_page)
+  if (typeof fields === 'string' && fields) params.set('fields', fields)
 
   const usePayments = typeStr.toLowerCase() === 'payment'
   const endpoint = usePayments ? 'payments.json' : 'activities.json'
