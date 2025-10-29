@@ -11,7 +11,11 @@ function App() {
 
   useEffect(() => {
     const fetchData = async () => {
+      // eslint-disable-next-line no-console
+      console.log('[App] Starting data fetch...')
       const token = localStorage.getItem('clio_access_token')
+      // eslint-disable-next-line no-console
+      console.log('[App] Access token in localStorage:', token ? 'YES' : 'NO')
       
       if (!token) {
         setNeedsAuth(true)
@@ -20,15 +24,21 @@ function App() {
       }
       
       try {
+        // eslint-disable-next-line no-console
+        console.log('[App] Fetching dashboard data...')
         const dashboardData = await clioService.getDashboardData()
         setData(dashboardData)
         setLoading(false)
       } catch (err: any) {
+        // eslint-disable-next-line no-console
+        console.error('[App] ✗ Error loading dashboard data:', err?.message || err)
         if (err.response?.status === 401) {
           localStorage.removeItem('clio_access_token')
           setNeedsAuth(true)
           setLoading(false)
         } else {
+          // eslint-disable-next-line no-console
+          console.error('[App] API Error:', err?.message || 'Unknown error', err?.response || '')
           // Just use sample data if API fails
           setData(clioService.getSampleData())
           setLoading(false)
