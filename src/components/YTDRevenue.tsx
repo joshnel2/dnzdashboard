@@ -1,31 +1,40 @@
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import type { YTDRevenueEntry } from '../types'
-import './ChartSection.css'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LabelList,
+} from "recharts";
+import type { YTDRevenueEntry } from "../types";
+import "./ChartSection.css";
 
 interface YTDRevenueProps {
-  data: YTDRevenueEntry[]
+  data: YTDRevenueEntry[];
 }
 
 function YTDRevenue({ data }: YTDRevenueProps) {
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(value)
-  }
+    }).format(value);
+  };
 
   const formatMonth = (dateStr: string) => {
-    const [year, month] = dateStr.split('-')
-    const date = new Date(parseInt(year), parseInt(month) - 1)
-    return date.toLocaleDateString('en-US', { month: 'short' })
-  }
+    const [year, month] = dateStr.split("-");
+    const date = new Date(parseInt(year), parseInt(month) - 1);
+    return date.toLocaleDateString("en-US", { month: "short" });
+  };
 
-  const formattedData = data.map(entry => ({
+  const formattedData = data.map((entry) => ({
     ...entry,
     monthLabel: formatMonth(entry.date),
-  }))
+  }));
 
   return (
     <div className="chart-container">
@@ -42,37 +51,46 @@ function YTDRevenue({ data }: YTDRevenueProps) {
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis
               dataKey="monthLabel"
-              tick={{ fill: '#666', fontSize: 12 }}
+              interval={0}
+              tick={{ fill: "#666", fontSize: 12 }}
             />
             <YAxis
               tickFormatter={formatCurrency}
-              tick={{ fill: '#666', fontSize: 12 }}
+              tick={{ fill: "#666", fontSize: 12 }}
               width={80}
             />
             <Tooltip
               formatter={(value: number) => formatCurrency(value)}
               labelFormatter={(label, payload) => {
                 if (payload && payload[0]) {
-                  return `${payload[0].payload.monthLabel} ${payload[0].payload.date.split('-')[0]}`
+                  return `${payload[0].payload.monthLabel} ${payload[0].payload.date.split("-")[0]}`;
                 }
-                return label
+                return label;
               }}
               contentStyle={{
-                backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                border: '1px solid #ccc',
-                borderRadius: '4px',
+                backgroundColor: "rgba(255, 255, 255, 0.95)",
+                border: "1px solid #ccc",
+                borderRadius: "4px",
               }}
             />
             <Bar
               dataKey="amount"
               fill="#fa709a"
               radius={[8, 8, 0, 0]}
-            />
+              minPointSize={6}
+            >
+              <LabelList
+                dataKey="amount"
+                position="top"
+                formatter={(value: number) => formatCurrency(value)}
+                fill="#97266d"
+              />
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
     </div>
-  )
+  );
 }
 
-export default YTDRevenue
+export default YTDRevenue;

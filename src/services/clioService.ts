@@ -315,6 +315,7 @@ class ClioService {
     let currentMonthTotal = 0
     const startOfYear = new Date(now.getFullYear(), 0, 1)
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const monthKeys = this.buildMonthKeyRange(startOfYear, now)
 
     if (rows.length === 0) {
@@ -339,7 +340,9 @@ class ClioService {
         return
       }
 
-      if (date >= startOfMonth && date <= now) {
+      const normalizedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+
+      if (normalizedDate >= startOfMonth && normalizedDate <= today) {
         currentMonthTotal += amount
       }
 
@@ -356,8 +359,12 @@ class ClioService {
       amount: this.roundCurrency(monthlyTotals.get(date) || 0),
     }))
 
+    const currentMonthKey = this.formatMonthKey(now)
+    const monthKeyTotal = monthlyTotals.get(currentMonthKey) ?? 0
+    const monthlyDepositsRaw = currentMonthTotal > 0 ? currentMonthTotal : monthKeyTotal
+
     return {
-      monthlyDeposits: this.roundCurrency(currentMonthTotal),
+      monthlyDeposits: this.roundCurrency(monthlyDepositsRaw),
       weeklyRevenue: this.buildWeeklySeries(weeklyTotals, now),
       ytdRevenue,
     }
@@ -539,7 +546,7 @@ class ClioService {
     const totals = new Map<string, number>()
 
     rows.forEach((row) => {
-      const name = row[nameKey]?.trim()
+      const name = row[nameKey]?.replace(/\s+/g, ' ').trim()
       if (!name) {
         return
       }
@@ -726,8 +733,36 @@ class ClioService {
   }
 
   getSampleData(): DashboardData {
+    const now = new Date()
+    const startOfYear = new Date(now.getFullYear(), 0, 1)
+    const monthKeys = this.buildMonthKeyRange(startOfYear, now)
+
+    const ytdRevenue = monthKeys.map((date, index) => ({
+      date,
+      amount: this.roundCurrency(360000 + index * 15000 + ((index % 3) - 1) * 12000),
+    }))
+
+    const ytdTime = monthKeys.map((date, index) => ({
+      date,
+      hours: this.roundHours(1180 + index * 45 + ((index % 4) - 1) * 30),
+    }))
+
+    const weeklyRevenue: { week: string; amount: number }[] = []
+    const currentWeekStart = this.getWeekStart(now)
+
+    for (let i = 11; i >= 0; i--) {
+      const weekStart = new Date(currentWeekStart)
+      weekStart.setDate(weekStart.getDate() - i * 7)
+      weeklyRevenue.push({
+        week: this.formatWeekLabel(weekStart),
+        amount: this.roundCurrency(78000 + (i % 5) * 4000 + (i % 3) * 6500),
+      })
+    }
+
+    const monthlyDeposits = ytdRevenue.length > 0 ? ytdRevenue[ytdRevenue.length - 1].amount : 0
+
     return {
-      monthlyDeposits: 425000,
+      monthlyDeposits,
       attorneyBillableHours: [
         { name: 'Sarah Johnson', hours: 168 },
         { name: 'Michael Chen', hours: 152 },
@@ -737,44 +772,9 @@ class ClioService {
         { name: 'Robert Martinez', hours: 118 },
         { name: 'Lisa Anderson', hours: 105 },
       ],
-      weeklyRevenue: [
-        { week: '8/19', amount: 85000 },
-        { week: '8/26', amount: 92000 },
-        { week: '9/2', amount: 78000 },
-        { week: '9/9', amount: 95000 },
-        { week: '9/16', amount: 88000 },
-        { week: '9/23', amount: 91000 },
-        { week: '9/30', amount: 105000 },
-        { week: '10/7', amount: 98000 },
-        { week: '10/14', amount: 102000 },
-        { week: '10/21', amount: 96000 },
-        { week: '10/28', amount: 89000 },
-        { week: '11/4', amount: 94000 },
-      ],
-      ytdTime: [
-        { date: '2025-01', hours: 1250 },
-        { date: '2025-02', hours: 1180 },
-        { date: '2025-03', hours: 1320 },
-        { date: '2025-04', hours: 1290 },
-        { date: '2025-05', hours: 1405 },
-        { date: '2025-06', hours: 1380 },
-        { date: '2025-07', hours: 1295 },
-        { date: '2025-08', hours: 1350 },
-        { date: '2025-09', hours: 1420 },
-        { date: '2025-10', hours: 1155 },
-      ],
-      ytdRevenue: [
-        { date: '2025-01', amount: 385000 },
-        { date: '2025-02', amount: 360000 },
-        { date: '2025-03', amount: 425000 },
-        { date: '2025-04', amount: 410000 },
-        { date: '2025-05', amount: 455000 },
-        { date: '2025-06', amount: 440000 },
-        { date: '2025-07', amount: 395000 },
-        { date: '2025-08', amount: 420000 },
-        { date: '2025-09', amount: 465000 },
-        { date: '2025-10', amount: 425000 },
-      ],
+      weeklyRevenue,
+      ytdTime,
+      ytdRevenue,
     }
   }
 }
