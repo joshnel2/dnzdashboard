@@ -9,6 +9,11 @@ interface AttorneyBillableHoursProps {
 const COLORS = ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#fee140']
 
 function AttorneyBillableHours({ data }: AttorneyBillableHoursProps) {
+  console.log('📊 [AttorneyBillableHours] Rendering with data:', {
+    dataLength: data?.length || 0,
+    data: data
+  })
+  
   return (
     <div className="chart-container">
       <div className="chart-header">
