@@ -1,22 +1,31 @@
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import type { YTDTimeEntry } from '../types'
-import './ChartSection.css'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LabelList,
+} from "recharts";
+import type { YTDTimeEntry } from "../types";
+import "./ChartSection.css";
 
 interface YTDTimeProps {
-  data: YTDTimeEntry[]
+  data: YTDTimeEntry[];
 }
 
 function YTDTime({ data }: YTDTimeProps) {
   const formatMonth = (dateStr: string) => {
-    const [year, month] = dateStr.split('-')
-    const date = new Date(parseInt(year), parseInt(month) - 1)
-    return date.toLocaleDateString('en-US', { month: 'short' })
-  }
+    const [year, month] = dateStr.split("-");
+    const date = new Date(parseInt(year), parseInt(month) - 1);
+    return date.toLocaleDateString("en-US", { month: "short" });
+  };
 
-  const formattedData = data.map(entry => ({
+  const formattedData = data.map((entry) => ({
     ...entry,
     monthLabel: formatMonth(entry.date),
-  }))
+  }));
 
   return (
     <div className="chart-container">
@@ -33,35 +42,51 @@ function YTDTime({ data }: YTDTimeProps) {
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis
               dataKey="monthLabel"
-              tick={{ fill: '#666', fontSize: 12 }}
+              interval={0}
+              tick={{ fill: "#666", fontSize: 12 }}
             />
             <YAxis
-              label={{ value: 'Hours', angle: -90, position: 'insideLeft', style: { fill: '#666' } }}
-              tick={{ fill: '#666', fontSize: 12 }}
+              label={{
+                value: "Hours",
+                angle: -90,
+                position: "insideLeft",
+                style: { fill: "#666" },
+              }}
+              tick={{ fill: "#666", fontSize: 12 }}
             />
             <Tooltip
               labelFormatter={(label, payload) => {
                 if (payload && payload[0]) {
-                  return `${payload[0].payload.monthLabel} ${payload[0].payload.date.split('-')[0]}`
+                  return `${payload[0].payload.monthLabel} ${payload[0].payload.date.split("-")[0]}`;
                 }
-                return label
+                return label;
               }}
               contentStyle={{
-                backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                border: '1px solid #ccc',
-                borderRadius: '4px',
+                backgroundColor: "rgba(255, 255, 255, 0.95)",
+                border: "1px solid #ccc",
+                borderRadius: "4px",
               }}
             />
             <Bar
               dataKey="hours"
               fill="#4facfe"
               radius={[8, 8, 0, 0]}
-            />
+              minPointSize={6}
+            >
+              <LabelList
+                dataKey="hours"
+                position="top"
+                formatter={(value: number) =>
+                  `${Number(value).toLocaleString()}h`
+                }
+                fill="#1a365d"
+              />
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
     </div>
-  )
+  );
 }
 
-export default YTDTime
+export default YTDTime;
