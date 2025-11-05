@@ -25,23 +25,3 @@ export interface DashboardData {
   ytdTime: YTDTimeEntry[]
   ytdRevenue: YTDRevenueEntry[]
 }
-
-export interface ClioUser {
-  id: number
-  name: string
-}
-
-export interface ClioTimeEntry {
-  id: number
-  user: ClioUser
-  date: string
-  quantity: number
-  price: number
-}
-
-export interface ClioActivity {
-  id: number
-  date: string
-  total: number
-  type: string
-}
