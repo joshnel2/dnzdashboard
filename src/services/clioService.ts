@@ -92,7 +92,17 @@ const TIME_DATE_KEY_PREFERENCES: string[][] = [
 const REVENUE_VALUE_INCLUDE = ['collect', 'payment', 'receipt', 'paid', 'deposit', 'revenue']
 const REVENUE_VALUE_EXCLUDE = ['uncollect', 'unpaid', 'outstanding', 'balance', 'writeoff', 'discount', 'unbilled']
 const HOURS_INCLUDE = ['hour']
-const HOURS_EXCLUDE = ['rate', 'target', 'percent', 'percentage', 'utilization']
+const HOURS_EXCLUDE = ['rate', 'target', 'percent', 'percentage', 'utilization', 'budget', 'capacity', 'goal']
+
+const HOURS_COLUMN_PREFERENCES: string[][] = [
+  ['billable', 'hours'],
+  ['billed', 'hours'],
+  ['hours', 'billed'],
+  ['hours', 'worked'],
+  ['worked', 'hours'],
+  ['recorded', 'hours'],
+  ['hours'],
+]
 
 class ClioService {
   async getDashboardData(): Promise<DashboardData> {
@@ -124,7 +134,7 @@ class ClioService {
       const attorneyBillableHours = this.calculateAttorneyBillableHours(attorneySourceRows)
 
       const ytdTimeSourceRows = timeEntriesRows.length > 0 ? timeEntriesRows : productivityRows
-      const ytdTime = this.calculateYTDTime(ytdTimeSourceRows)
+      const ytdTime = this.calculateYTDTime(ytdTimeSourceRows, now)
 
       return {
         monthlyDeposits: revenueMetrics.monthlyDeposits,
@@ -303,12 +313,15 @@ class ClioService {
     const weeklyTotals = new Map<string, number>()
     const monthlyTotals = new Map<string, number>()
     let currentMonthTotal = 0
+    const startOfYear = new Date(now.getFullYear(), 0, 1)
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const monthKeys = this.buildMonthKeyRange(startOfYear, now)
 
     if (rows.length === 0) {
       return {
         monthlyDeposits: currentMonthTotal,
         weeklyRevenue: this.buildWeeklySeries(weeklyTotals, now),
-        ytdRevenue: [],
+        ytdRevenue: monthKeys.map((date) => ({ date, amount: 0 })),
       }
     }
 
@@ -326,7 +339,7 @@ class ClioService {
         return
       }
 
-      if (date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()) {
+      if (date >= startOfMonth && date <= now) {
         currentMonthTotal += amount
       }
 
@@ -338,9 +351,10 @@ class ClioService {
       monthlyTotals.set(monthKey, (monthlyTotals.get(monthKey) || 0) + amount)
     })
 
-    const ytdRevenue = Array.from(monthlyTotals.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([date, amount]) => ({ date, amount: this.roundCurrency(amount) }))
+    const ytdRevenue = monthKeys.map((date) => ({
+      date,
+      amount: this.roundCurrency(monthlyTotals.get(date) || 0),
+    }))
 
     return {
       monthlyDeposits: this.roundCurrency(currentMonthTotal),
@@ -364,40 +378,32 @@ class ClioService {
       return []
     }
 
-    const totals = new Map<string, number>()
-
-    rows.forEach((row) => {
-      const name = row[nameKey]?.trim()
-      if (!name) {
-        return
-      }
-
-      const hours = this.sumColumnsByKeys(row, hourColumns)
-      if (!hours) {
-        return
-      }
-
-      totals.set(name, (totals.get(name) || 0) + hours)
-    })
+    const { totals } = this.selectAttorneyHourColumn(rows, nameKey, hourColumns)
+    if (totals.size === 0) {
+      return []
+    }
 
     return Array.from(totals.entries())
       .map(([name, hours]) => ({ name, hours: this.roundHours(hours) }))
       .sort((a, b) => b.hours - a.hours)
   }
 
-  private calculateYTDTime(rows: CsvRow[]): { date: string; hours: number }[] {
+  private calculateYTDTime(rows: CsvRow[], now: Date): { date: string; hours: number }[] {
+    const startOfYear = new Date(now.getFullYear(), 0, 1)
+    const monthKeys = this.buildMonthKeyRange(startOfYear, now)
+
     if (rows.length === 0) {
-      return []
+      return monthKeys.map((date) => ({ date, hours: 0 }))
     }
 
     const dateKey = this.findKeyAcrossRows(rows, TIME_DATE_KEY_PREFERENCES)
     if (!dateKey) {
-      return []
+      return monthKeys.map((date) => ({ date, hours: 0 }))
     }
 
     const timeColumns = this.determineTimeColumns(rows)
     if (timeColumns.length === 0) {
-      return []
+      return monthKeys.map((date) => ({ date, hours: 0 }))
     }
 
     const monthlyTotals = new Map<string, number>()
@@ -417,9 +423,10 @@ class ClioService {
       monthlyTotals.set(monthKey, (monthlyTotals.get(monthKey) || 0) + hours)
     })
 
-    return Array.from(monthlyTotals.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([date, hours]) => ({ date, hours: this.roundHours(hours) }))
+    return monthKeys.map((date) => ({
+      date,
+      hours: this.roundHours(monthlyTotals.get(date) || 0),
+    }))
   }
 
   private determineTimeColumns(rows: CsvRow[]): string[] {
@@ -478,6 +485,98 @@ class ClioService {
       const matchesExclude = exclude.some((keyword) => normalized.includes(keyword))
       return !matchesExclude
     })
+  }
+
+  private selectAttorneyHourColumn(
+    rows: CsvRow[],
+    nameKey: string,
+    hourColumns: string[]
+  ): { column: string; totals: Map<string, number> } {
+    const orderedColumns = this.orderColumnsByPreference(hourColumns, HOURS_COLUMN_PREFERENCES)
+    const evaluationCache = new Map<string, { totals: Map<string, number>; hasData: boolean; hasVariance: boolean }>()
+
+    const evaluateColumn = (column: string) => {
+      if (evaluationCache.has(column)) {
+        return evaluationCache.get(column)!
+      }
+
+      const totals = this.aggregateHoursByColumn(rows, nameKey, column)
+      const values = Array.from(totals.values())
+      const nonZeroValues = values.filter((value) => Math.abs(value) > 0.01)
+      const hasData = nonZeroValues.length > 0
+      let hasVariance = false
+
+      if (nonZeroValues.length > 1) {
+        const min = Math.min(...nonZeroValues)
+        const max = Math.max(...nonZeroValues)
+        hasVariance = Math.abs(max - min) > 0.01
+      }
+
+      const evaluation = { totals, hasData, hasVariance }
+      evaluationCache.set(column, evaluation)
+      return evaluation
+    }
+
+    for (const column of orderedColumns) {
+      const evaluation = evaluateColumn(column)
+      if (evaluation.hasVariance) {
+        return { column, totals: evaluation.totals }
+      }
+    }
+
+    for (const column of orderedColumns) {
+      const evaluation = evaluateColumn(column)
+      if (evaluation.hasData) {
+        return { column, totals: evaluation.totals }
+      }
+    }
+
+    const fallbackColumn = orderedColumns[0]
+    return { column: fallbackColumn, totals: evaluateColumn(fallbackColumn).totals }
+  }
+
+  private aggregateHoursByColumn(rows: CsvRow[], nameKey: string, column: string): Map<string, number> {
+    const totals = new Map<string, number>()
+
+    rows.forEach((row) => {
+      const name = row[nameKey]?.trim()
+      if (!name) {
+        return
+      }
+
+      const value = this.parseNumericValue(row[column])
+      if (!value) {
+        return
+      }
+
+      totals.set(name, (totals.get(name) || 0) + value)
+    })
+
+    return totals
+  }
+
+  private orderColumnsByPreference(columns: string[], preferences: string[][]): string[] {
+    if (columns.length <= 1) {
+      return columns
+    }
+
+    const remaining = [...columns]
+    const ordered: string[] = []
+
+    preferences.forEach((tokens) => {
+      const normalizedTokens = tokens.map((token) => this.normalizeKey(token))
+      const index = remaining.findIndex((column) => {
+        const normalizedColumn = this.normalizeKey(column)
+        return normalizedTokens.every((token) => normalizedColumn.includes(token))
+      })
+
+      if (index !== -1) {
+        ordered.push(remaining.splice(index, 1)[0])
+      }
+    })
+
+    ordered.push(...remaining)
+    return ordered
   }
 
   private findFirstMatchingKey(keys: string[], preferences: string[][]): string | undefined {
@@ -599,6 +698,19 @@ class ClioService {
     }
 
     return weeks
+  }
+
+  private buildMonthKeyRange(start: Date, end: Date): string[] {
+    const keys: string[] = []
+    const cursor = new Date(start.getFullYear(), start.getMonth(), 1)
+    const endMonth = new Date(end.getFullYear(), end.getMonth(), 1)
+
+    while (cursor <= endMonth) {
+      keys.push(this.formatMonthKey(cursor))
+      cursor.setMonth(cursor.getMonth() + 1)
+    }
+
+    return keys
   }
 
   private normalizeKey(value: string): string {
