@@ -1,7 +1,7 @@
 import axios from 'axios'
 import type { DashboardData } from '../types'
 
-const API_BASE_URL = 'https://app.clio.com/api/v4'
+const API_BASE_URL = '/api/clio'
 
 const getAccessToken = () => {
   if (typeof window !== 'undefined') {
@@ -12,9 +12,6 @@ const getAccessToken = () => {
 
 const clioApi = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 })
 
 clioApi.interceptors.request.use((config) => {
@@ -176,11 +173,16 @@ class ClioService {
         .map((p) => `${p.category}/${p.key}`)
         .join(', ')}`
     )
+
   }
 
   private async fetchReportCsv(path: ReportPath, params: Record<string, string>): Promise<string> {
-    const response = await clioApi.get<string>(`/reports/${path.category}/${path.key}.csv`, {
-      params,
+    const response = await clioApi.get<string>('/report', {
+      params: {
+        category: path.category,
+        key: path.key,
+        ...params,
+      },
       responseType: 'text',
       headers: {
         Accept: 'text/csv',
