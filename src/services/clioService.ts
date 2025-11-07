@@ -20,7 +20,10 @@ const clioApi = axios.create({
 clioApi.interceptors.request.use((config) => {
   const token = getAccessToken()
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+    config.headers = config.headers ?? {}
+    if (!config.headers.Authorization) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
   }
   return config
 })
@@ -104,8 +107,54 @@ const HOURS_COLUMN_PREFERENCES: string[][] = [
   ['hours'],
 ]
 
-class ClioService {
-  async getDashboardData(): Promise<DashboardData> {
+export class ClioService {
+  async getDashboardData(tokenOverride?: string): Promise<DashboardData> {
+    const token = tokenOverride ?? getAccessToken()
+
+    if (!token) {
+      const error: any = new Error('Missing Clio access token')
+      error.response = { status: 401 }
+      throw error
+    }
+
+    if (typeof window !== 'undefined' && !tokenOverride) {
+      try {
+        const proxyResponse = await fetch('/api/dashboard', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+
+        if (proxyResponse.ok) {
+          return (await proxyResponse.json()) as DashboardData
+        }
+
+        if (proxyResponse.status === 401) {
+          const error: any = new Error('Unauthorized')
+          error.response = { status: 401 }
+          throw error
+        }
+
+        const bodyText = await proxyResponse.text()
+        console.warn('Dashboard proxy request failed, falling back to direct Clio fetch', {
+          status: proxyResponse.status,
+          body: bodyText,
+        })
+      } catch (proxyError) {
+        console.warn('Dashboard proxy request encountered an error, falling back to direct Clio fetch', proxyError)
+      }
+    }
+
+    return this.getDashboardDataWithToken(token)
+  }
+
+  async getDashboardDataWithToken(token: string): Promise<DashboardData> {
+    if (!token) {
+      const error: any = new Error('Missing Clio access token')
+      error.response = { status: 401 }
+      throw error
+    }
+
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -115,13 +164,15 @@ class ClioService {
         this.fetchReportForRange('revenue', REVENUE_REPORT_PATHS, { start: startOfYear, end: now }, [
           {},
           { 'filters[date_range][name]': 'payment_date' },
-        ]),
-        this.fetchReportForRange('productivity', PRODUCTIVITY_REPORT_PATHS, { start: startOfMonth, end: now }),
-        this.fetchReportForRange('time entries', TIME_ENTRIES_REPORT_PATHS, { start: startOfYear, end: now }, [
-          {},
-          { detail: 'true' },
-          { 'filters[group_by]': 'entry' },
-        ]),
+        ], token),
+        this.fetchReportForRange('productivity', PRODUCTIVITY_REPORT_PATHS, { start: startOfMonth, end: now }, [{}], token),
+        this.fetchReportForRange(
+          'time entries',
+          TIME_ENTRIES_REPORT_PATHS,
+          { start: startOfYear, end: now },
+          [{}, { detail: 'true' }, { 'filters[group_by]': 'entry' }],
+          token
+        ),
       ])
 
       const revenueRows = this.parseCsv(revenueCsv)
@@ -153,7 +204,8 @@ class ClioService {
     label: string,
     paths: ReportPath[],
     range: DateRange,
-    paramExtras: Record<string, string>[] = [{}]
+    paramExtras: Record<string, string>[] = [{}],
+    token: string
   ): Promise<string> {
     const dateVariants = this.buildDateRangeParamVariants(range.start, range.end)
     const paramVariants = this.combineParamVariants(dateVariants, paramExtras)
@@ -161,7 +213,7 @@ class ClioService {
     for (const path of paths) {
       for (const params of paramVariants) {
         try {
-          return await this.fetchReportCsv(path, params)
+          return await this.fetchReportCsv(path, params, token)
         } catch (err) {
           if (this.shouldRetryWithNextConfig(err)) {
             continue
@@ -178,12 +230,13 @@ class ClioService {
     )
   }
 
-  private async fetchReportCsv(path: ReportPath, params: Record<string, string>): Promise<string> {
+  private async fetchReportCsv(path: ReportPath, params: Record<string, string>, token: string): Promise<string> {
     const response = await clioApi.get<string>(`/reports/${path.category}/${path.key}.csv`, {
       params,
       responseType: 'text',
       headers: {
         Accept: 'text/csv',
+        Authorization: `Bearer ${token}`,
       },
     })
 
