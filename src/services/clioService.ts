@@ -1,7 +1,22 @@
 import axios from 'axios'
 import type { DashboardData } from '../types'
 
-const API_BASE_URL = 'https://app.clio.com/api/v4'
+const resolveApiBaseUrl = (): string => {
+  const envBase =
+    import.meta.env?.VITE_CLIO_REPORTS_BASE_URL ||
+    import.meta.env?.VITE_CLIO_API_BASE_URL ||
+    ''
+
+  if (envBase) {
+    const trimmed = envBase.replace(/\/+$/, '')
+    const withoutApiV4 = trimmed.replace(/\/api\/v4$/i, '')
+    return withoutApiV4 || '/api/clio'
+  }
+
+  return '/api/clio'
+}
+
+const API_BASE_URL = resolveApiBaseUrl()
 
 const getAccessToken = () => {
   if (typeof window !== 'undefined') {
