@@ -43,20 +43,28 @@ interface DateRange {
 
 const REVENUE_REPORT_PATHS: ReportPath[] = [
   { category: 'managed', key: 'revenue' },
+  { category: 'managed', key: 'revenue_by_matter' },
   { category: 'billing', key: 'revenue' },
+  { category: 'billing', key: 'payments' },
   { category: 'standard', key: 'revenue' },
+  { category: 'standard', key: 'payments' },
+  { category: 'standard', key: 'payments_received' },
 ]
 
 const PRODUCTIVITY_REPORT_PATHS: ReportPath[] = [
   { category: 'managed', key: 'productivity_by_user' },
   { category: 'managed', key: 'productivity_user' },
   { category: 'managed', key: 'productivity' },
+  { category: 'standard', key: 'productivity' },
+  { category: 'standard', key: 'time_entries_by_user' },
 ]
 
 const TIME_ENTRIES_REPORT_PATHS: ReportPath[] = [
   { category: 'standard', key: 'time_entries' },
   { category: 'standard', key: 'time_entries_detail' },
   { category: 'managed', key: 'time_entries_detail' },
+  { category: 'managed', key: 'time_entries' },
+  { category: 'billing', key: 'time_entries' },
 ]
 
 const REVENUE_DATE_KEY_PREFERENCES: string[][] = [
@@ -89,10 +97,10 @@ const TIME_DATE_KEY_PREFERENCES: string[][] = [
   ['month'],
 ]
 
-const REVENUE_VALUE_INCLUDE = ['collect', 'payment', 'receipt', 'paid', 'deposit', 'revenue']
-const REVENUE_VALUE_EXCLUDE = ['uncollect', 'unpaid', 'outstanding', 'balance', 'writeoff', 'discount', 'unbilled']
-const HOURS_INCLUDE = ['hour']
-const HOURS_EXCLUDE = ['rate', 'target', 'percent', 'percentage', 'utilization', 'budget', 'capacity', 'goal']
+const REVENUE_VALUE_INCLUDE = ['collect', 'payment', 'receipt', 'paid', 'deposit', 'revenue', 'amount', 'total']
+const REVENUE_VALUE_EXCLUDE = ['uncollect', 'unpaid', 'outstanding', 'balance', 'writeoff', 'discount', 'unbilled', 'invoice', 'bill']
+const HOURS_INCLUDE = ['hour', 'time']
+const HOURS_EXCLUDE = ['rate', 'target', 'percent', 'percentage', 'utilization', 'budget', 'capacity', 'goal', 'value', 'amount']
 
 const HOURS_COLUMN_PREFERENCES: string[][] = [
   ['billable', 'hours'],
@@ -110,11 +118,20 @@ class ClioService {
     const startOfYear = new Date(now.getFullYear(), 0, 1)
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
 
+    console.log('📊 Starting dashboard data fetch...')
+    console.log('Date range:', {
+      startOfYear: startOfYear.toISOString().split('T')[0],
+      startOfMonth: startOfMonth.toISOString().split('T')[0],
+      now: now.toISOString().split('T')[0],
+    })
+
     try {
-      const [revenueCsv, productivityCsv, timeEntriesCsv] = await Promise.all([
+      // Fetch all reports with better error handling
+      const [revenueCsv, productivityCsv, timeEntriesCsv] = await Promise.allSettled([
         this.fetchReportForRange('revenue', REVENUE_REPORT_PATHS, { start: startOfYear, end: now }, [
           {},
           { 'filters[date_range][name]': 'payment_date' },
+          { 'filters[date_range][name]': 'collection_date' },
         ]),
         this.fetchReportForRange('productivity', PRODUCTIVITY_REPORT_PATHS, { start: startOfMonth, end: now }),
         this.fetchReportForRange('time entries', TIME_ENTRIES_REPORT_PATHS, { start: startOfYear, end: now }, [
@@ -124,27 +141,93 @@ class ClioService {
         ]),
       ])
 
-      const revenueRows = this.parseCsv(revenueCsv)
-      const productivityRows = this.parseCsv(productivityCsv)
-      const timeEntriesRows = this.parseCsv(timeEntriesCsv)
+      const revenueCsvData = revenueCsv.status === 'fulfilled' ? revenueCsv.value : ''
+      const productivityCsvData = productivityCsv.status === 'fulfilled' ? productivityCsv.value : ''
+      const timeEntriesCsvData = timeEntriesCsv.status === 'fulfilled' ? timeEntriesCsv.value : ''
+
+      console.log('✅ CSV fetch results:', {
+        revenue: revenueCsv.status === 'fulfilled' ? `${revenueCsvData.length} chars` : `❌ ${revenueCsv.reason}`,
+        productivity: productivityCsv.status === 'fulfilled' ? `${productivityCsvData.length} chars` : `❌ ${productivityCsv.reason}`,
+        timeEntries: timeEntriesCsv.status === 'fulfilled' ? `${timeEntriesCsvData.length} chars` : `❌ ${timeEntriesCsv.reason}`,
+      })
+
+      const revenueRows = this.parseCsv(revenueCsvData)
+      const productivityRows = this.parseCsv(productivityCsvData)
+      const timeEntriesRows = this.parseCsv(timeEntriesCsvData)
+
+      console.log('📋 Parsed rows:', {
+        revenue: revenueRows.length,
+        productivity: productivityRows.length,
+        timeEntries: timeEntriesRows.length,
+      })
+
+      if (revenueRows.length > 0) {
+        console.log('💰 Revenue CSV columns:', Object.keys(revenueRows[0]))
+        console.log('💰 Sample revenue row:', revenueRows[0])
+      }
+
+      if (productivityRows.length > 0) {
+        console.log('⚡ Productivity CSV columns:', Object.keys(productivityRows[0]))
+        console.log('⚡ Sample productivity row:', productivityRows[0])
+      }
+
+      if (timeEntriesRows.length > 0) {
+        console.log('⏱️  Time entries CSV columns:', Object.keys(timeEntriesRows[0]))
+        console.log('⏱️  Sample time entry row:', timeEntriesRows[0])
+      }
 
       const revenueMetrics = this.calculateRevenueMetrics(revenueRows, now)
+      console.log('📈 Revenue metrics calculated:', {
+        monthlyDeposits: revenueMetrics.monthlyDeposits,
+        weeklyRevenuePoints: revenueMetrics.weeklyRevenue.length,
+        ytdRevenuePoints: revenueMetrics.ytdRevenue.length,
+      })
 
       const attorneySourceRows = productivityRows.length > 0 ? productivityRows : timeEntriesRows
       const attorneyBillableHours = this.calculateAttorneyBillableHours(attorneySourceRows)
+      console.log('👥 Attorney hours calculated:', attorneyBillableHours.length, 'attorneys')
 
       const ytdTimeSourceRows = timeEntriesRows.length > 0 ? timeEntriesRows : productivityRows
       const ytdTime = this.calculateYTDTime(ytdTimeSourceRows, now)
+      console.log('⏰ YTD time calculated:', ytdTime.length, 'months')
 
-      return {
+      const result = {
         monthlyDeposits: revenueMetrics.monthlyDeposits,
         attorneyBillableHours,
         weeklyRevenue: revenueMetrics.weeklyRevenue,
         ytdTime,
         ytdRevenue: revenueMetrics.ytdRevenue,
       }
+
+      // Final summary
+      console.log('\n📊 ========== DASHBOARD DATA SUMMARY ==========')
+      console.log('💰 Monthly Deposits:', `$${result.monthlyDeposits.toLocaleString()}`)
+      console.log('👥 Attorney Billable Hours:', `${result.attorneyBillableHours.length} attorneys`)
+      if (result.attorneyBillableHours.length > 0) {
+        const totalHours = result.attorneyBillableHours.reduce((sum, a) => sum + a.hours, 0)
+        console.log('   Total hours:', totalHours.toFixed(1))
+        console.log('   Top 3:', result.attorneyBillableHours.slice(0, 3).map(a => `${a.name} (${a.hours}h)`).join(', '))
+      }
+      console.log('📈 Weekly Revenue:', `${result.weeklyRevenue.length} weeks`)
+      if (result.weeklyRevenue.length > 0) {
+        const totalWeekly = result.weeklyRevenue.reduce((sum, w) => sum + w.amount, 0)
+        console.log('   Total:', `$${totalWeekly.toLocaleString()}`)
+      }
+      console.log('📅 YTD Revenue:', `${result.ytdRevenue.length} months`)
+      if (result.ytdRevenue.length > 0) {
+        const totalYTD = result.ytdRevenue.reduce((sum, r) => sum + r.amount, 0)
+        console.log('   Total:', `$${totalYTD.toLocaleString()}`)
+      }
+      console.log('⏱️  YTD Time:', `${result.ytdTime.length} months`)
+      if (result.ytdTime.length > 0) {
+        const totalTime = result.ytdTime.reduce((sum, t) => sum + t.hours, 0)
+        console.log('   Total hours:', totalTime.toFixed(1))
+      }
+      console.log('==============================================\n')
+
+      return result
     } catch (error) {
-      console.error('Failed to load dashboard data from Clio reports CSV', error)
+      console.error('❌ Failed to load dashboard data from Clio reports CSV', error)
       throw error
     }
   }
@@ -158,11 +241,24 @@ class ClioService {
     const dateVariants = this.buildDateRangeParamVariants(range.start, range.end)
     const paramVariants = this.combineParamVariants(dateVariants, paramExtras)
 
+    console.log(`🔍 Fetching ${label} report with ${paths.length} path(s) and ${paramVariants.length} parameter variant(s)`)
+
+    const errors: string[] = []
+
     for (const path of paths) {
       for (const params of paramVariants) {
         try {
-          return await this.fetchReportCsv(path, params)
+          console.log(`  → Trying ${path.category}/${path.key} with params:`, params)
+          const csv = await this.fetchReportCsv(path, params)
+          console.log(`  ✓ Success! Got ${csv.length} chars from ${path.category}/${path.key}`)
+          return csv
         } catch (err) {
+          const errorMsg = axios.isAxiosError(err) 
+            ? `${err.response?.status}: ${err.response?.statusText || err.message}`
+            : String(err)
+          console.log(`  ✗ Failed ${path.category}/${path.key}: ${errorMsg}`)
+          errors.push(`${path.category}/${path.key}: ${errorMsg}`)
+          
           if (this.shouldRetryWithNextConfig(err)) {
             continue
           }
@@ -171,10 +267,13 @@ class ClioService {
       }
     }
 
+    const errorSummary = errors.slice(0, 5).join('; ')
+    console.error(`❌ Unable to fetch ${label} report after ${errors.length} attempts. Sample errors: ${errorSummary}`)
+    
     throw new Error(
       `Unable to fetch ${label} report from Clio. Tried ${paths
         .map((p) => `${p.category}/${p.key}`)
-        .join(', ')}`
+        .join(', ')}. Last error: ${errors[errors.length - 1] || 'unknown'}`
     )
   }
 
@@ -252,6 +351,11 @@ class ClioService {
   }
 
   private parseCsv(csvText: string): CsvRow[] {
+    if (!csvText || csvText.trim().length === 0) {
+      console.log('⚠️  Empty CSV text provided')
+      return []
+    }
+
     const rows: string[][] = []
     let currentRow: string[] = []
     let currentField = ''
@@ -289,6 +393,12 @@ class ClioService {
     }
 
     if (rows.length === 0) {
+      console.log('⚠️  No rows parsed from CSV')
+      return []
+    }
+
+    if (rows.length === 1) {
+      console.log('⚠️  CSV has header only, no data rows')
       return []
     }
 
@@ -297,16 +407,28 @@ class ClioService {
       rawHeaders[0] = rawHeaders[0].slice(1)
     }
 
-    return rows
+    // Filter out empty headers
+    const validHeaders = rawHeaders.filter((h) => h.length > 0)
+    if (validHeaders.length === 0) {
+      console.log('⚠️  No valid headers found in CSV')
+      return []
+    }
+
+    const dataRows = rows
       .slice(1)
       .filter((row) => row.some((cell) => cell.trim().length > 0))
       .map((row) => {
         const record: CsvRow = {}
         rawHeaders.forEach((header, index) => {
-          record[header] = (row[index] ?? '').trim()
+          if (header) {
+            record[header] = (row[index] ?? '').trim()
+          }
         })
         return record
       })
+
+    console.log(`✓ Parsed ${dataRows.length} data rows with ${validHeaders.length} columns`)
+    return dataRows
   }
 
   private calculateRevenueMetrics(rows: CsvRow[], now: Date) {
@@ -319,6 +441,7 @@ class ClioService {
     const monthKeys = this.buildMonthKeyRange(startOfYear, now)
 
     if (rows.length === 0) {
+      console.log('⚠️  No revenue rows to process')
       return {
         monthlyDeposits: currentMonthTotal,
         weeklyRevenue: this.buildWeeklySeries(weeklyTotals, now),
@@ -328,17 +451,32 @@ class ClioService {
 
     const dateKey = this.findKeyAcrossRows(rows, REVENUE_DATE_KEY_PREFERENCES)
     const revenueColumns = this.findColumnsByKeywords(rows, REVENUE_VALUE_INCLUDE, REVENUE_VALUE_EXCLUDE)
+    
+    console.log('💰 Revenue aggregation:', {
+      dateKey,
+      revenueColumns,
+      totalRows: rows.length,
+    })
+
+    let processedRows = 0
+    let skippedRows = 0
+    let totalAmount = 0
 
     rows.forEach((row) => {
       const date = dateKey ? this.parseDateValue(row[dateKey]) : null
       if (!date) {
+        skippedRows++
         return
       }
 
       const amount = this.sumColumnsByKeys(row, revenueColumns)
       if (!amount) {
+        skippedRows++
         return
       }
+
+      processedRows++
+      totalAmount += amount
 
       const normalizedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
 
@@ -352,6 +490,13 @@ class ClioService {
 
       const monthKey = this.formatMonthKey(date)
       monthlyTotals.set(monthKey, (monthlyTotals.get(monthKey) || 0) + amount)
+    })
+
+    console.log('💰 Revenue processing summary:', {
+      processedRows,
+      skippedRows,
+      totalAmount: this.roundCurrency(totalAmount),
+      currentMonthTotal: this.roundCurrency(currentMonthTotal),
     })
 
     const ytdRevenue = monthKeys.map((date) => ({
@@ -372,27 +517,42 @@ class ClioService {
 
   private calculateAttorneyBillableHours(rows: CsvRow[]): { name: string; hours: number }[] {
     if (rows.length === 0) {
+      console.log('⚠️  No attorney data rows to process')
       return []
     }
 
     const nameKey = this.findKeyAcrossRows(rows, ATTORNEY_KEY_PREFERENCES)
     if (!nameKey) {
+      console.log('⚠️  Could not find attorney name column in data')
       return []
     }
 
     const hourColumns = this.findColumnsByKeywords(rows, HOURS_INCLUDE, HOURS_EXCLUDE)
     if (hourColumns.length === 0) {
+      console.log('⚠️  Could not find hours column in data')
       return []
     }
 
-    const { totals } = this.selectAttorneyHourColumn(rows, nameKey, hourColumns)
+    console.log('👥 Attorney hours aggregation:', {
+      nameKey,
+      hourColumns,
+      totalRows: rows.length,
+    })
+
+    const { column, totals } = this.selectAttorneyHourColumn(rows, nameKey, hourColumns)
     if (totals.size === 0) {
+      console.log('⚠️  No attorney totals calculated')
       return []
     }
 
-    return Array.from(totals.entries())
+    console.log(`👥 Selected column "${column}" for attorney hours. Found ${totals.size} attorneys`)
+
+    const result = Array.from(totals.entries())
       .map(([name, hours]) => ({ name, hours: this.roundHours(hours) }))
       .sort((a, b) => b.hours - a.hours)
+    
+    console.log('👥 Top attorneys:', result.slice(0, 3))
+    return result
   }
 
   private calculateYTDTime(rows: CsvRow[], now: Date): { date: string; hours: number }[] {
@@ -400,20 +560,31 @@ class ClioService {
     const monthKeys = this.buildMonthKeyRange(startOfYear, now)
 
     if (rows.length === 0) {
+      console.log('⚠️  No time entry rows to process')
       return monthKeys.map((date) => ({ date, hours: 0 }))
     }
 
     const dateKey = this.findKeyAcrossRows(rows, TIME_DATE_KEY_PREFERENCES)
     if (!dateKey) {
+      console.log('⚠️  Could not find date column in time entry data')
       return monthKeys.map((date) => ({ date, hours: 0 }))
     }
 
     const timeColumns = this.determineTimeColumns(rows)
     if (timeColumns.length === 0) {
+      console.log('⚠️  Could not find time/hours column in data')
       return monthKeys.map((date) => ({ date, hours: 0 }))
     }
 
+    console.log('⏱️  YTD time aggregation:', {
+      dateKey,
+      timeColumns,
+      totalRows: rows.length,
+    })
+
     const monthlyTotals = new Map<string, number>()
+    let processedRows = 0
+    let totalHours = 0
 
     rows.forEach((row) => {
       const date = this.parseDateValue(row[dateKey])
@@ -427,7 +598,15 @@ class ClioService {
         return
       }
 
+      processedRows++
+      totalHours += hours
       monthlyTotals.set(monthKey, (monthlyTotals.get(monthKey) || 0) + hours)
+    })
+
+    console.log('⏱️  YTD time processing summary:', {
+      processedRows,
+      totalHours: this.roundHours(totalHours),
+      monthsWithData: monthlyTotals.size,
     })
 
     return monthKeys.map((date) => ({
@@ -463,7 +642,58 @@ class ClioService {
       })
     })
 
-    return this.findFirstMatchingKey(Array.from(keys), preferences)
+    const allKeys = Array.from(keys)
+    const match = this.findFirstMatchingKey(allKeys, preferences)
+    
+    if (match) {
+      return match
+    }
+
+    // Fallback: try to find any column that looks like it might be what we're looking for
+    // For dates, look for columns with date-like values
+    // For names, look for columns with text values
+    console.log('⚠️  No preferred key found, checking column content...')
+    
+    const sampleRows = rows.slice(0, Math.min(10, rows.length))
+    
+    // Check if this is for dates by seeing if any preference contains 'date'
+    const isDateSearch = preferences.some((pref) => pref.some((token) => token.includes('date')))
+    
+    if (isDateSearch) {
+      // Find columns with date-like values
+      for (const key of allKeys) {
+        const values = sampleRows.map((row) => row[key]).filter((v) => v && v.trim())
+        const dateValues = values.filter((v) => this.parseDateValue(v) !== null)
+        if (dateValues.length > values.length * 0.7) {
+          console.log(`Found date column: ${key}`)
+          return key
+        }
+      }
+    }
+
+    // Check if this is for names/text
+    const isNameSearch = preferences.some((pref) => 
+      pref.some((token) => ['name', 'user', 'attorney', 'timekeeper'].includes(token))
+    )
+    
+    if (isNameSearch) {
+      // Find columns with text values (non-numeric, non-date)
+      for (const key of allKeys) {
+        const values = sampleRows.map((row) => row[key]).filter((v) => v && v.trim())
+        const textValues = values.filter((v) => 
+          v.length > 2 && 
+          this.parseNumericValue(v) === 0 && 
+          this.parseDateValue(v) === null
+        )
+        if (textValues.length > values.length * 0.7) {
+          console.log(`Found name/text column: ${key}`)
+          return key
+        }
+      }
+    }
+
+    console.log('⚠️  Could not find suitable column')
+    return undefined
   }
 
   private findColumnsByKeywords(
@@ -483,7 +713,7 @@ class ClioService {
     const include = includeKeywords.map((keyword) => this.normalizeKey(keyword))
     const exclude = excludeKeywords.map((keyword) => this.normalizeKey(keyword))
 
-    return Array.from(columns).filter((column) => {
+    const matches = Array.from(columns).filter((column) => {
       const normalized = this.normalizeKey(column)
       const matchesInclude = include.some((keyword) => normalized.includes(keyword))
       if (!matchesInclude) {
@@ -492,6 +722,30 @@ class ClioService {
       const matchesExclude = exclude.some((keyword) => normalized.includes(keyword))
       return !matchesExclude
     })
+
+    // If we found matches, return them
+    if (matches.length > 0) {
+      return matches
+    }
+
+    // Fallback: look for numeric columns that might be what we're looking for
+    console.log('⚠️  No columns matched keywords, looking for numeric columns...')
+    const numericColumns: string[] = []
+    
+    // Sample first few rows to find columns with numeric data
+    const sampleRows = rows.slice(0, Math.min(10, rows.length))
+    Array.from(columns).forEach((column) => {
+      const values = sampleRows.map((row) => row[column]).filter((v) => v && v.trim())
+      const numericValues = values.filter((v) => this.parseNumericValue(v) !== 0)
+      
+      // If most values are numeric, consider it a numeric column
+      if (numericValues.length > values.length * 0.5) {
+        numericColumns.push(column)
+      }
+    })
+
+    console.log('Found numeric columns:', numericColumns)
+    return numericColumns
   }
 
   private selectAttorneyHourColumn(
@@ -616,20 +870,35 @@ class ClioService {
       return 0
     }
 
-    let numericString = trimmed.replace(/[^0-9.,()\-]/g, '')
-    const isNegative = numericString.includes('(') && numericString.includes(')')
-    numericString = numericString.replace(/[(),]/g, '')
+    // Check if this is a negative value in parentheses
+    const isNegative = (trimmed.startsWith('(') && trimmed.endsWith(')')) || trimmed.startsWith('-')
 
-    if (!numericString) {
+    // Remove all non-numeric characters except dots and digits
+    let numericString = trimmed.replace(/[^0-9.\-]/g, '')
+    
+    // Handle multiple dots (keep only the last one for decimal separator)
+    const dotCount = (numericString.match(/\./g) || []).length
+    if (dotCount > 1) {
+      // Assume the last dot is the decimal separator, remove others
+      const parts = numericString.split('.')
+      const integerPart = parts.slice(0, -1).join('')
+      const decimalPart = parts[parts.length - 1]
+      numericString = `${integerPart}.${decimalPart}`
+    }
+
+    // Remove leading/trailing dots
+    numericString = numericString.replace(/^\.+|\.+$/g, '')
+
+    if (!numericString || numericString === '-') {
       return 0
     }
 
     const parsed = Number.parseFloat(numericString)
-    if (Number.isNaN(parsed)) {
+    if (Number.isNaN(parsed) || !Number.isFinite(parsed)) {
       return 0
     }
 
-    return isNegative ? -parsed : parsed
+    return isNegative && parsed > 0 ? -parsed : parsed
   }
 
   private parseDateValue(value: string | undefined): Date | null {
