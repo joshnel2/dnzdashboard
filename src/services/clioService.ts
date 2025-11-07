@@ -8,9 +8,7 @@ const resolveApiBaseUrl = (): string => {
     ''
 
   if (envBase) {
-    const trimmed = envBase.replace(/\/+$/, '')
-    const withoutApiV4 = trimmed.replace(/\/api\/v4$/i, '')
-    return withoutApiV4 || '/api/clio'
+    return envBase.trim().replace(/\/+$/, '')
   }
 
   return '/api/clio'

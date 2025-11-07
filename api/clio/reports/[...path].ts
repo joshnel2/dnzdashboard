@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
-const DEFAULT_BASE_URL = 'https://app.clio.com'
+const DEFAULT_BASE_URL = 'https://app.clio.com/api/v4'
 
 const buildBaseUrl = (): string => {
   const configured =
@@ -10,15 +10,22 @@ const buildBaseUrl = (): string => {
     process.env.VITE_CLIO_API_BASE_URL ||
     ''
 
-  if (!configured) {
-    return DEFAULT_BASE_URL
+  let base = configured.trim()
+  if (!base) {
+    base = DEFAULT_BASE_URL
   }
 
-  if (/^https?:\/\//i.test(configured)) {
-    return configured.replace(/\/+$/, '')
+  if (!/^https?:\/\//i.test(base)) {
+    base = `https://${base.replace(/^\/*/, '')}`
   }
 
-  return `https://${configured.replace(/^\/*/, '').replace(/\/+$/, '')}`
+  base = base.replace(/\/+$/, '')
+
+  if (!/\/api\/v4$/i.test(base)) {
+    base = `${base}/api/v4`
+  }
+
+  return base
 }
 
 const normalizeAuthorizationHeader = (req: VercelRequest): string | undefined => {
