@@ -1,7 +1,58 @@
-import axios from 'axios'
+import axios, { AxiosHeaders } from 'axios'
 import type { DashboardData } from '../types'
 
-const API_BASE_URL = 'https://app.clio.com/api/v4'
+const DEFAULT_API_BASE_URL = 'https://app.clio.com/api/v4'
+const API_BASE_URL =
+  typeof import.meta !== 'undefined' && import.meta.env?.VITE_CLIO_API_BASE_URL
+    ? import.meta.env.VITE_CLIO_API_BASE_URL
+    : DEFAULT_API_BASE_URL
+
+const PER_PAGE = 200
+const MAX_PAGES = 1000
+const WEEKS_TO_DISPLAY = 12
+
+type DateRange = {
+  start: Date
+  end: Date
+}
+
+type PossiblyNumeric = string | number | null | undefined
+
+interface ClioPaging {
+  current_page?: number
+  next?: number | string | null
+  total_pages?: number
+}
+
+interface ClioPaginated<T> {
+  data?: T[]
+  meta?: {
+    paging?: ClioPaging
+  }
+}
+
+interface ClioUserRef {
+  id?: number
+  name?: string | null
+}
+
+interface ClioTimeEntry {
+  id: number
+  date?: string | null
+  quantity?: PossiblyNumeric
+  billed_quantity?: PossiblyNumeric
+  duration?: PossiblyNumeric
+  billable?: boolean | null
+  user?: ClioUserRef | null
+}
+
+interface ClioActivity {
+  id: number
+  date?: string | null
+  amount?: PossiblyNumeric
+  type?: string | null
+  activity_type?: string | null
+}
 
 const getAccessToken = () => {
   if (typeof window !== 'undefined') {
@@ -18,123 +69,33 @@ const clioApi = axios.create({
 })
 
 clioApi.interceptors.request.use((config) => {
+  const headers = (config.headers = AxiosHeaders.from(config.headers))
+
   const token = getAccessToken()
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+    headers.set('Authorization', `Bearer ${token}`)
+  } else {
+    headers.delete('Authorization')
   }
+
+  headers.set('Accept', 'application/json')
   return config
 })
-
-type ReportCategory = 'managed' | 'billing' | 'standard'
-
-interface ReportPath {
-  category: ReportCategory
-  key: string
-}
-
-interface CsvRow {
-  [key: string]: string
-}
-
-interface DateRange {
-  start: Date
-  end: Date
-}
-
-const REVENUE_REPORT_PATHS: ReportPath[] = [
-  { category: 'managed', key: 'revenue' },
-  { category: 'billing', key: 'revenue' },
-  { category: 'standard', key: 'revenue' },
-]
-
-const PRODUCTIVITY_REPORT_PATHS: ReportPath[] = [
-  { category: 'managed', key: 'productivity_by_user' },
-  { category: 'managed', key: 'productivity_user' },
-  { category: 'managed', key: 'productivity' },
-]
-
-const TIME_ENTRIES_REPORT_PATHS: ReportPath[] = [
-  { category: 'standard', key: 'time_entries' },
-  { category: 'standard', key: 'time_entries_detail' },
-  { category: 'managed', key: 'time_entries_detail' },
-]
-
-const REVENUE_DATE_KEY_PREFERENCES: string[][] = [
-  ['payment', 'date'],
-  ['collection', 'date'],
-  ['collected', 'date'],
-  ['deposit', 'date'],
-  ['transaction', 'date'],
-  ['activity', 'date'],
-  ['invoice', 'date'],
-  ['date'],
-]
-
-const ATTORNEY_KEY_PREFERENCES: string[][] = [
-  ['timekeeper'],
-  ['user'],
-  ['attorney'],
-  ['responsible', 'attorney'],
-  ['originating', 'attorney'],
-  ['billing', 'attorney'],
-  ['lawyer'],
-  ['name'],
-]
-
-const TIME_DATE_KEY_PREFERENCES: string[][] = [
-  ['entry', 'date'],
-  ['activity', 'date'],
-  ['work', 'date'],
-  ['date'],
-  ['month'],
-]
-
-const REVENUE_VALUE_INCLUDE = ['collect', 'payment', 'receipt', 'paid', 'deposit', 'revenue']
-const REVENUE_VALUE_EXCLUDE = ['uncollect', 'unpaid', 'outstanding', 'balance', 'writeoff', 'discount', 'unbilled']
-const HOURS_INCLUDE = ['hour']
-const HOURS_EXCLUDE = ['rate', 'target', 'percent', 'percentage', 'utilization', 'budget', 'capacity', 'goal']
-
-const HOURS_COLUMN_PREFERENCES: string[][] = [
-  ['billable', 'hours'],
-  ['billed', 'hours'],
-  ['hours', 'billed'],
-  ['hours', 'worked'],
-  ['worked', 'hours'],
-  ['recorded', 'hours'],
-  ['hours'],
-]
 
 class ClioService {
   async getDashboardData(): Promise<DashboardData> {
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
 
     try {
-      const [revenueCsv, productivityCsv, timeEntriesCsv] = await Promise.all([
-        this.fetchReportForRange('revenue', REVENUE_REPORT_PATHS, { start: startOfYear, end: now }, [
-          {},
-          { 'filters[date_range][name]': 'payment_date' },
-        ]),
-        this.fetchReportForRange('productivity', PRODUCTIVITY_REPORT_PATHS, { start: startOfMonth, end: now }),
-        this.fetchReportForRange('time entries', TIME_ENTRIES_REPORT_PATHS, { start: startOfYear, end: now }, [
-          {},
-          { detail: 'true' },
-          { 'filters[group_by]': 'entry' },
-        ]),
+      const [timeEntries, payments] = await Promise.all([
+        this.fetchTimeEntries({ start: startOfYear, end: now }),
+        this.fetchPayments({ start: startOfYear, end: now }),
       ])
 
-      const revenueRows = this.parseCsv(revenueCsv)
-      const productivityRows = this.parseCsv(productivityCsv)
-      const timeEntriesRows = this.parseCsv(timeEntriesCsv)
-
-      const revenueMetrics = this.calculateRevenueMetrics(revenueRows, now)
-
-      const attorneySourceRows = productivityRows.length > 0 ? productivityRows : timeEntriesRows
-      const attorneyBillableHours = this.calculateAttorneyBillableHours(attorneySourceRows)
-
-      const ytdTimeSourceRows = timeEntriesRows.length > 0 ? timeEntriesRows : productivityRows
-      const ytdTime = this.calculateYTDTime(ytdTimeSourceRows, now)
+      const revenueMetrics = this.calculateRevenueMetrics(payments, now)
+      const attorneyBillableHours = this.calculateAttorneyBillableHours(timeEntries)
+      const ytdTime = this.calculateYTDTime(timeEntries, now)
 
       return {
         monthlyDeposits: revenueMetrics.monthlyDeposits,
@@ -144,289 +105,271 @@ class ClioService {
         ytdRevenue: revenueMetrics.ytdRevenue,
       }
     } catch (error) {
-      console.error('Failed to load dashboard data from Clio reports CSV', error)
+      console.error('Failed to load dashboard data from Clio API', error)
       throw error
     }
   }
 
-  private async fetchReportForRange(
-    label: string,
-    paths: ReportPath[],
-    range: DateRange,
-    paramExtras: Record<string, string>[] = [{}]
-  ): Promise<string> {
-    const dateVariants = this.buildDateRangeParamVariants(range.start, range.end)
-    const paramVariants = this.combineParamVariants(dateVariants, paramExtras)
-
-    for (const path of paths) {
-      for (const params of paramVariants) {
-        try {
-          return await this.fetchReportCsv(path, params)
-        } catch (err) {
-          if (this.shouldRetryWithNextConfig(err)) {
-            continue
-          }
-          throw err
-        }
-      }
+  private async fetchTimeEntries(range: DateRange): Promise<ClioTimeEntry[]> {
+    const baseParams = {
+      fields: 'id,date,quantity,billed_quantity,duration,billable,user{id,name}',
+      sort: 'date',
+      order: 'asc',
     }
 
-    throw new Error(
-      `Unable to fetch ${label} report from Clio. Tried ${paths
-        .map((p) => `${p.category}/${p.key}`)
-        .join(', ')}`
-    )
-  }
+    const dateStart = this.formatDate(range.start)
+    const dateEnd = this.formatDate(range.end)
+    const isoStart = this.formatDateTime(range.start)
 
-  private async fetchReportCsv(path: ReportPath, params: Record<string, string>): Promise<string> {
-    const response = await clioApi.get<string>(`/reports/${path.category}/${path.key}.csv`, {
-      params,
-      responseType: 'text',
-      headers: {
-        Accept: 'text/csv',
-      },
-    })
-
-    return response.data
-  }
-
-  private buildDateRangeParamVariants(start: Date, end: Date): Record<string, string>[] {
-    const startStr = this.formatDateParam(start)
-    const endStr = this.formatDateParam(end)
-
-    const variants: Record<string, string>[] = [
-      { 'filters[date_range][start]': startStr, 'filters[date_range][end]': endStr },
-      { 'filters[date][start]': startStr, 'filters[date][end]': endStr },
-      { 'filters[date_range][from]': startStr, 'filters[date_range][to]': endStr },
-      { 'date[start]': startStr, 'date[end]': endStr },
-      { start_date: startStr, end_date: endStr },
-      { from: startStr, to: endStr },
-      { 'filters[start_date]': startStr, 'filters[end_date]': endStr },
+    const paramVariants = [
+      { ...baseParams, 'filters[date][gte]': dateStart, 'filters[date][lte]': dateEnd },
+      { ...baseParams, 'date[gte]': dateStart, 'date[lte]': dateEnd },
+      { ...baseParams, since: isoStart },
+      baseParams,
     ]
 
-    const seen = new Set<string>()
-    return variants.filter((variant) => {
-      const key = JSON.stringify(Object.entries(variant).sort(([a], [b]) => a.localeCompare(b)))
-      if (seen.has(key)) {
-        return false
-      }
-      seen.add(key)
-      return true
-    })
-  }
+    for (const params of paramVariants) {
+      try {
+        const entries = await this.fetchAllPages<ClioTimeEntry>('/time_entries', params)
+        const filtered = entries.filter((entry) => this.isWithinRange(entry.date, range))
 
-  private combineParamVariants(
-    dateVariants: Record<string, string>[],
-    extras: Record<string, string>[]
-  ): Record<string, string>[] {
-    const combinations: Record<string, string>[] = []
-
-    for (const base of dateVariants) {
-      for (const extra of extras) {
-        combinations.push({ ...extra, ...base })
-      }
-    }
-
-    const seen = new Set<string>()
-    return combinations.filter((params) => {
-      const key = JSON.stringify(Object.entries(params).sort(([a], [b]) => a.localeCompare(b)))
-      if (seen.has(key)) {
-        return false
-      }
-      seen.add(key)
-      return true
-    })
-  }
-
-  private shouldRetryWithNextConfig(error: unknown): boolean {
-    if (!axios.isAxiosError(error)) {
-      return false
-    }
-
-    const status = error.response?.status
-    return status === 404 || status === 400 || status === 422
-  }
-
-  private formatDateParam(date: Date): string {
-    return date.toISOString().split('T')[0]
-  }
-
-  private parseCsv(csvText: string): CsvRow[] {
-    const rows: string[][] = []
-    let currentRow: string[] = []
-    let currentField = ''
-    let inQuotes = false
-
-    for (let i = 0; i < csvText.length; i++) {
-      const char = csvText[i]
-
-      if (char === '"') {
-        if (inQuotes && csvText[i + 1] === '"') {
-          currentField += '"'
-          i += 1
-        } else {
-          inQuotes = !inQuotes
+        if (filtered.length > 0 || entries.length === 0) {
+          return filtered
         }
-      } else if (char === ',' && !inQuotes) {
-        currentRow.push(currentField)
-        currentField = ''
-      } else if ((char === '\n' || char === '\r') && !inQuotes) {
-        if (char === '\r' && csvText[i + 1] === '\n') {
-          i += 1
+      } catch (error) {
+        if (this.shouldRetryWithNextConfig(error)) {
+          continue
         }
-        currentRow.push(currentField)
-        rows.push(currentRow)
-        currentRow = []
-        currentField = ''
-      } else {
-        currentField += char
+        throw error
       }
     }
 
-    if (currentField.length > 0 || currentRow.length > 0) {
-      currentRow.push(currentField)
-      rows.push(currentRow)
+    return []
+  }
+
+  private async fetchPayments(range: DateRange): Promise<ClioActivity[]> {
+    const baseParams = {
+      fields: 'id,date,amount,type,activity_type',
+      sort: 'date',
+      order: 'asc',
     }
 
-    if (rows.length === 0) {
-      return []
+    const dateStart = this.formatDate(range.start)
+    const dateEnd = this.formatDate(range.end)
+    const isoStart = this.formatDateTime(range.start)
+
+    const paramVariants = [
+      {
+        ...baseParams,
+        activity_type: 'Payment',
+        'filters[date][gte]': dateStart,
+        'filters[date][lte]': dateEnd,
+      },
+      {
+        ...baseParams,
+        activity_type: 'payment',
+        'filters[date][gte]': dateStart,
+        'filters[date][lte]': dateEnd,
+      },
+      {
+        ...baseParams,
+        type: 'Payment',
+        'filters[date][gte]': dateStart,
+        'filters[date][lte]': dateEnd,
+      },
+      { ...baseParams, activity_type: 'Payment', since: isoStart },
+      { ...baseParams, since: isoStart },
+      baseParams,
+    ]
+
+    for (const params of paramVariants) {
+      try {
+        const activities = await this.fetchAllPages<ClioActivity>('/activities', params)
+        const filtered = activities
+          .filter((activity) => this.isPaymentActivity(activity))
+          .filter((activity) => this.isWithinRange(activity.date, range))
+
+        if (filtered.length > 0 || activities.length === 0) {
+          return filtered
+        }
+      } catch (error) {
+        if (this.shouldRetryWithNextConfig(error)) {
+          continue
+        }
+        throw error
+      }
     }
 
-    const rawHeaders = rows[0].map((header) => header.trim())
-    if (rawHeaders[0] && rawHeaders[0].charCodeAt(0) === 0xfeff) {
-      rawHeaders[0] = rawHeaders[0].slice(1)
-    }
+    return []
+  }
 
-    return rows
-      .slice(1)
-      .filter((row) => row.some((cell) => cell.trim().length > 0))
-      .map((row) => {
-        const record: CsvRow = {}
-        rawHeaders.forEach((header, index) => {
-          record[header] = (row[index] ?? '').trim()
-        })
-        return record
+  private async fetchAllPages<T>(path: string, params: Record<string, unknown>): Promise<T[]> {
+    const results: T[] = []
+    let page = 1
+
+    while (page <= MAX_PAGES) {
+      const response = await clioApi.get(path, {
+        params: { ...params, page, per_page: PER_PAGE },
       })
+
+      const payload = response.data as ClioPaginated<T> | T[]
+      const items: T[] = Array.isArray(payload) ? payload : payload?.data ?? []
+      results.push(...items)
+
+      const paging = Array.isArray(payload) ? undefined : payload?.meta?.paging
+
+      if (paging?.current_page !== undefined && paging?.total_pages !== undefined) {
+        if (paging.current_page >= paging.total_pages) {
+          break
+        }
+        page = paging.current_page + 1
+        continue
+      }
+
+      if (paging?.next) {
+        if (typeof paging.next === 'number') {
+          page = paging.next
+          continue
+        }
+        if (typeof paging.next === 'string') {
+          const match = paging.next.match(/[?&]page=(\d+)/)
+          if (match) {
+            page = Number.parseInt(match[1], 10)
+            continue
+          }
+        }
+      }
+
+      const totalPagesHeader =
+        response.headers?.['x-total-pages'] ?? response.headers?.['x-total-page']
+      if (typeof totalPagesHeader === 'string') {
+        const parsed = Number.parseInt(totalPagesHeader, 10)
+        if (!Number.isNaN(parsed) && page < parsed) {
+          page += 1
+          continue
+        }
+      }
+
+      if (items.length === PER_PAGE) {
+        page += 1
+        continue
+      }
+
+      break
+    }
+
+    if (page > MAX_PAGES) {
+      console.warn(`Reached maximum page limit when fetching ${path}`)
+    }
+
+    return results
   }
 
-  private calculateRevenueMetrics(rows: CsvRow[], now: Date) {
+  private calculateRevenueMetrics(payments: ClioActivity[], now: Date) {
     const weeklyTotals = new Map<string, number>()
     const monthlyTotals = new Map<string, number>()
     let currentMonthTotal = 0
     const startOfYear = new Date(now.getFullYear(), 0, 1)
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const today = this.normalizeToDay(now)
     const monthKeys = this.buildMonthKeyRange(startOfYear, now)
 
-    if (rows.length === 0) {
-      return {
-        monthlyDeposits: currentMonthTotal,
-        weeklyRevenue: this.buildWeeklySeries(weeklyTotals, now),
-        ytdRevenue: monthKeys.map((date) => ({ date, amount: 0 })),
+    payments.forEach((activity) => {
+      if (!this.isPaymentActivity(activity)) {
+        return
       }
-    }
 
-    const dateKey = this.findKeyAcrossRows(rows, REVENUE_DATE_KEY_PREFERENCES)
-    const revenueColumns = this.findColumnsByKeywords(rows, REVENUE_VALUE_INCLUDE, REVENUE_VALUE_EXCLUDE)
-
-    rows.forEach((row) => {
-      const date = dateKey ? this.parseDateValue(row[dateKey]) : null
+      const date = this.parseDate(activity.date)
       if (!date) {
         return
       }
 
-      const amount = this.sumColumnsByKeys(row, revenueColumns)
-      if (!amount) {
+      const normalizedDate = this.normalizeToDay(date)
+      if (normalizedDate < startOfYear || normalizedDate > today) {
         return
       }
 
-      const normalizedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+      const amount = this.parseAmount(activity.amount)
+      if (amount === 0) {
+        return
+      }
 
       if (normalizedDate >= startOfMonth && normalizedDate <= today) {
         currentMonthTotal += amount
       }
 
-      const weekStart = this.getWeekStart(date)
+      const weekStart = this.getWeekStart(normalizedDate)
       const weekKey = this.formatKeyDate(weekStart)
       weeklyTotals.set(weekKey, (weeklyTotals.get(weekKey) || 0) + amount)
 
-      const monthKey = this.formatMonthKey(date)
+      const monthKey = this.formatMonthKey(normalizedDate)
       monthlyTotals.set(monthKey, (monthlyTotals.get(monthKey) || 0) + amount)
     })
 
-    const ytdRevenue = monthKeys.map((date) => ({
-      date,
-      amount: this.roundCurrency(monthlyTotals.get(date) || 0),
+    const ytdRevenue = monthKeys.map((dateKey) => ({
+      date: dateKey,
+      amount: this.roundCurrency(monthlyTotals.get(dateKey) || 0),
     }))
 
-    const currentMonthKey = this.formatMonthKey(now)
-    const monthKeyTotal = monthlyTotals.get(currentMonthKey) ?? 0
-    const monthlyDepositsRaw = currentMonthTotal > 0 ? currentMonthTotal : monthKeyTotal
-
     return {
-      monthlyDeposits: this.roundCurrency(monthlyDepositsRaw),
+      monthlyDeposits: this.roundCurrency(currentMonthTotal),
       weeklyRevenue: this.buildWeeklySeries(weeklyTotals, now),
       ytdRevenue,
     }
   }
 
-  private calculateAttorneyBillableHours(rows: CsvRow[]): { name: string; hours: number }[] {
-    if (rows.length === 0) {
+  private calculateAttorneyBillableHours(entries: ClioTimeEntry[]) {
+    if (entries.length === 0) {
       return []
     }
 
-    const nameKey = this.findKeyAcrossRows(rows, ATTORNEY_KEY_PREFERENCES)
-    if (!nameKey) {
-      return []
-    }
+    const totals = new Map<string, number>()
 
-    const hourColumns = this.findColumnsByKeywords(rows, HOURS_INCLUDE, HOURS_EXCLUDE)
-    if (hourColumns.length === 0) {
-      return []
-    }
+    entries.forEach((entry) => {
+      if (entry.billable === false) {
+        return
+      }
 
-    const { totals } = this.selectAttorneyHourColumn(rows, nameKey, hourColumns)
-    if (totals.size === 0) {
-      return []
-    }
+      const name = entry.user?.name?.trim()
+      if (!name) {
+        return
+      }
+
+      const hours = this.extractHours(entry)
+      if (hours <= 0) {
+        return
+      }
+
+      totals.set(name, (totals.get(name) || 0) + hours)
+    })
 
     return Array.from(totals.entries())
       .map(([name, hours]) => ({ name, hours: this.roundHours(hours) }))
       .sort((a, b) => b.hours - a.hours)
   }
 
-  private calculateYTDTime(rows: CsvRow[], now: Date): { date: string; hours: number }[] {
+  private calculateYTDTime(entries: ClioTimeEntry[], now: Date) {
     const startOfYear = new Date(now.getFullYear(), 0, 1)
     const monthKeys = this.buildMonthKeyRange(startOfYear, now)
 
-    if (rows.length === 0) {
-      return monthKeys.map((date) => ({ date, hours: 0 }))
-    }
-
-    const dateKey = this.findKeyAcrossRows(rows, TIME_DATE_KEY_PREFERENCES)
-    if (!dateKey) {
-      return monthKeys.map((date) => ({ date, hours: 0 }))
-    }
-
-    const timeColumns = this.determineTimeColumns(rows)
-    if (timeColumns.length === 0) {
+    if (entries.length === 0) {
       return monthKeys.map((date) => ({ date, hours: 0 }))
     }
 
     const monthlyTotals = new Map<string, number>()
 
-    rows.forEach((row) => {
-      const date = this.parseDateValue(row[dateKey])
+    entries.forEach((entry) => {
+      const date = this.parseDate(entry.date)
       if (!date) {
         return
       }
 
-      const monthKey = this.formatMonthKey(date)
-      const hours = this.sumColumnsByKeys(row, timeColumns)
-      if (!hours) {
+      const hours = this.extractHours(entry)
+      if (hours <= 0) {
         return
       }
 
+      const monthKey = this.formatMonthKey(date)
       monthlyTotals.set(monthKey, (monthlyTotals.get(monthKey) || 0) + hours)
     })
 
@@ -436,203 +379,42 @@ class ClioService {
     }))
   }
 
-  private determineTimeColumns(rows: CsvRow[]): string[] {
-    const hourColumns = this.findColumnsByKeywords(rows, HOURS_INCLUDE, HOURS_EXCLUDE)
-    if (hourColumns.length > 0) {
-      return hourColumns
+  private extractHours(entry: ClioTimeEntry): number {
+    const quantity = this.parseHours(entry.quantity)
+    if (quantity > 0) {
+      return quantity
     }
 
-    return this.findColumnsByKeywords(rows, ['duration', 'quantity'], [
-      'rate',
-      'target',
-      'percent',
-      'percentage',
-      'utilization',
-      'amount',
-      'value',
-    ])
-  }
+    const billedQuantity = this.parseHours(entry.billed_quantity)
+    if (billedQuantity > 0) {
+      return billedQuantity
+    }
 
-  private findKeyAcrossRows(rows: CsvRow[], preferences: string[][]): string | undefined {
-    const keys = new Set<string>()
-    rows.forEach((row) => {
-      Object.keys(row).forEach((key) => {
-        if (key) {
-          keys.add(key)
+    const duration = this.parseHours(entry.duration)
+    if (duration > 0) {
+      if (duration > 60) {
+        // Assume seconds for large values, minutes for medium values
+        if (duration >= 3600) {
+          return duration / 3600
         }
-      })
-    })
+        return duration / 60
+      }
+      return duration
+    }
 
-    return this.findFirstMatchingKey(Array.from(keys), preferences)
+    return 0
   }
 
-  private findColumnsByKeywords(
-    rows: CsvRow[],
-    includeKeywords: string[],
-    excludeKeywords: string[] = []
-  ): string[] {
-    const columns = new Set<string>()
-    rows.forEach((row) => {
-      Object.keys(row).forEach((key) => {
-        if (key) {
-          columns.add(key)
-        }
-      })
-    })
+  private shouldRetryWithNextConfig(error: unknown): boolean {
+    if (!axios.isAxiosError(error)) {
+      return false
+    }
 
-    const include = includeKeywords.map((keyword) => this.normalizeKey(keyword))
-    const exclude = excludeKeywords.map((keyword) => this.normalizeKey(keyword))
-
-    return Array.from(columns).filter((column) => {
-      const normalized = this.normalizeKey(column)
-      const matchesInclude = include.some((keyword) => normalized.includes(keyword))
-      if (!matchesInclude) {
-        return false
-      }
-      const matchesExclude = exclude.some((keyword) => normalized.includes(keyword))
-      return !matchesExclude
-    })
+    const status = error.response?.status
+    return status === 400 || status === 404 || status === 422
   }
 
-  private selectAttorneyHourColumn(
-    rows: CsvRow[],
-    nameKey: string,
-    hourColumns: string[]
-  ): { column: string; totals: Map<string, number> } {
-    const orderedColumns = this.orderColumnsByPreference(hourColumns, HOURS_COLUMN_PREFERENCES)
-    const evaluationCache = new Map<string, { totals: Map<string, number>; hasData: boolean; hasVariance: boolean }>()
-
-    const evaluateColumn = (column: string) => {
-      if (evaluationCache.has(column)) {
-        return evaluationCache.get(column)!
-      }
-
-      const totals = this.aggregateHoursByColumn(rows, nameKey, column)
-      const values = Array.from(totals.values())
-      const nonZeroValues = values.filter((value) => Math.abs(value) > 0.01)
-      const hasData = nonZeroValues.length > 0
-      let hasVariance = false
-
-      if (nonZeroValues.length > 1) {
-        const min = Math.min(...nonZeroValues)
-        const max = Math.max(...nonZeroValues)
-        hasVariance = Math.abs(max - min) > 0.01
-      }
-
-      const evaluation = { totals, hasData, hasVariance }
-      evaluationCache.set(column, evaluation)
-      return evaluation
-    }
-
-    for (const column of orderedColumns) {
-      const evaluation = evaluateColumn(column)
-      if (evaluation.hasVariance) {
-        return { column, totals: evaluation.totals }
-      }
-    }
-
-    for (const column of orderedColumns) {
-      const evaluation = evaluateColumn(column)
-      if (evaluation.hasData) {
-        return { column, totals: evaluation.totals }
-      }
-    }
-
-    const fallbackColumn = orderedColumns[0]
-    return { column: fallbackColumn, totals: evaluateColumn(fallbackColumn).totals }
-  }
-
-  private aggregateHoursByColumn(rows: CsvRow[], nameKey: string, column: string): Map<string, number> {
-    const totals = new Map<string, number>()
-
-    rows.forEach((row) => {
-      const name = row[nameKey]?.replace(/\s+/g, ' ').trim()
-      if (!name) {
-        return
-      }
-
-      const value = this.parseNumericValue(row[column])
-      if (!value) {
-        return
-      }
-
-      totals.set(name, (totals.get(name) || 0) + value)
-    })
-
-    return totals
-  }
-
-  private orderColumnsByPreference(columns: string[], preferences: string[][]): string[] {
-    if (columns.length <= 1) {
-      return columns
-    }
-
-    const remaining = [...columns]
-    const ordered: string[] = []
-
-    preferences.forEach((tokens) => {
-      const normalizedTokens = tokens.map((token) => this.normalizeKey(token))
-      const index = remaining.findIndex((column) => {
-        const normalizedColumn = this.normalizeKey(column)
-        return normalizedTokens.every((token) => normalizedColumn.includes(token))
-      })
-
-      if (index !== -1) {
-        ordered.push(remaining.splice(index, 1)[0])
-      }
-    })
-
-    ordered.push(...remaining)
-    return ordered
-  }
-
-  private findFirstMatchingKey(keys: string[], preferences: string[][]): string | undefined {
-    const normalizedKeys = keys.map((key) => ({ key, normalized: this.normalizeKey(key) }))
-
-    for (const tokens of preferences) {
-      const normalizedTokens = tokens.map((token) => this.normalizeKey(token))
-      const match = normalizedKeys.find(({ normalized }) =>
-        normalizedTokens.every((token) => normalized.includes(token))
-      )
-      if (match) {
-        return match.key
-      }
-    }
-
-    return undefined
-  }
-
-  private sumColumnsByKeys(row: CsvRow, columns: string[]): number {
-    return columns.reduce((total, column) => total + this.parseNumericValue(row[column]), 0)
-  }
-
-  private parseNumericValue(value: string | undefined): number {
-    if (!value) {
-      return 0
-    }
-
-    const trimmed = value.trim()
-    if (!trimmed) {
-      return 0
-    }
-
-    let numericString = trimmed.replace(/[^0-9.,()\-]/g, '')
-    const isNegative = numericString.includes('(') && numericString.includes(')')
-    numericString = numericString.replace(/[(),]/g, '')
-
-    if (!numericString) {
-      return 0
-    }
-
-    const parsed = Number.parseFloat(numericString)
-    if (Number.isNaN(parsed)) {
-      return 0
-    }
-
-    return isNegative ? -parsed : parsed
-  }
-
-  private parseDateValue(value: string | undefined): Date | null {
+  private parseDate(value: string | null | undefined): Date | null {
     if (!value) {
       return null
     }
@@ -646,28 +428,83 @@ class ClioService {
       return new Date(`${trimmed}-01`)
     }
 
-    const isoMatch = trimmed.match(/\d{4}-\d{2}-\d{2}/)
-    if (isoMatch) {
-      return new Date(isoMatch[0])
-    }
-
-    const slashMatch = trimmed.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/)
-    if (slashMatch) {
-      const normalized = slashMatch[0]
-      const parts = normalized.split('/')
-      if (parts.length === 3) {
-        const [month, day, year] = parts.map((part) => Number.parseInt(part, 10))
-        const fullYear = year < 100 ? 2000 + year : year
-        return new Date(fullYear, month - 1, day)
-      }
-    }
-
     const parsed = Date.parse(trimmed)
     if (!Number.isNaN(parsed)) {
       return new Date(parsed)
     }
 
     return null
+  }
+
+  private parseHours(value: PossiblyNumeric): number {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : 0
+    }
+    if (typeof value === 'string') {
+      const normalized = value.trim()
+      if (!normalized) {
+        return 0
+      }
+      const parsed = Number.parseFloat(normalized.replace(/[^0-9.\-]/g, ''))
+      return Number.isNaN(parsed) ? 0 : parsed
+    }
+    return 0
+  }
+
+  private parseAmount(value: PossiblyNumeric): number {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : 0
+    }
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      if (!trimmed) {
+        return 0
+      }
+      let numericString = trimmed.replace(/[^0-9.,()\-]/g, '')
+      const isNegative = numericString.includes('(') && numericString.includes(')')
+      numericString = numericString.replace(/[(),]/g, '')
+      if (!numericString) {
+        return 0
+      }
+      const parsed = Number.parseFloat(numericString)
+      if (Number.isNaN(parsed)) {
+        return 0
+      }
+      return isNegative ? -parsed : parsed
+    }
+
+    return 0
+  }
+
+  private isPaymentActivity(activity: ClioActivity): boolean {
+    const type = (activity.activity_type || activity.type || '').toString().toLowerCase()
+    return type === 'payment'
+  }
+
+  private isWithinRange(value: string | null | undefined, range: DateRange): boolean {
+    const date = this.parseDate(value)
+    if (!date) {
+      return false
+    }
+
+    const normalized = this.normalizeToDay(date)
+    const start = this.normalizeToDay(range.start)
+    const end = this.normalizeToDay(range.end)
+
+    return normalized >= start && normalized <= end
+  }
+
+  private formatDate(date: Date): string {
+    return date.toISOString().split('T')[0]
+  }
+
+  private formatDateTime(date: Date): string {
+    return date.toISOString()
+  }
+
+  private normalizeToDay(date: Date): Date {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate())
   }
 
   private getWeekStart(date: Date): Date {
@@ -679,7 +516,9 @@ class ClioService {
   }
 
   private formatKeyDate(date: Date): string {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+      date.getDate()
+    ).padStart(2, '0')}`
   }
 
   private formatWeekLabel(date: Date): string {
@@ -690,10 +529,13 @@ class ClioService {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
   }
 
-  private buildWeeklySeries(weeklyTotals: Map<string, number>, now: Date): { week: string; amount: number }[] {
+  private buildWeeklySeries(
+    weeklyTotals: Map<string, number>,
+    now: Date
+  ): { week: string; amount: number }[] {
     const weeks: { week: string; amount: number }[] = []
 
-    for (let i = 11; i >= 0; i--) {
+    for (let i = WEEKS_TO_DISPLAY - 1; i >= 0; i--) {
       const weekDate = new Date(now)
       weekDate.setDate(weekDate.getDate() - i * 7)
       const weekStart = this.getWeekStart(weekDate)
@@ -718,10 +560,6 @@ class ClioService {
     }
 
     return keys
-  }
-
-  private normalizeKey(value: string): string {
-    return value.toLowerCase().replace(/[^a-z0-9]/g, '')
   }
 
   private roundCurrency(value: number): number {
@@ -750,7 +588,7 @@ class ClioService {
     const weeklyRevenue: { week: string; amount: number }[] = []
     const currentWeekStart = this.getWeekStart(now)
 
-    for (let i = 11; i >= 0; i--) {
+    for (let i = WEEKS_TO_DISPLAY - 1; i >= 0; i--) {
       const weekStart = new Date(currentWeekStart)
       weekStart.setDate(weekStart.getDate() - i * 7)
       weeklyRevenue.push({
