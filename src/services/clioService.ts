@@ -7,6 +7,10 @@ const API_BASE_URL =
     ? import.meta.env.VITE_CLIO_API_BASE_URL
     : DEFAULT_API_BASE_URL
 
+const DEBUG_ENABLED =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CLIO_DEBUG === 'true') ||
+  (typeof window !== 'undefined' && window.localStorage?.getItem('clio_debug') === 'true')
+
 const PER_PAGE = 200
 const MAX_PAGES = 1000
 const WEEKS_TO_DISPLAY = 12
@@ -83,9 +87,21 @@ clioApi.interceptors.request.use((config) => {
 })
 
 class ClioService {
+  private debug(message: string, ...args: unknown[]) {
+    if (DEBUG_ENABLED) {
+      console.log(`[ClioService] ${message}`, ...args)
+    }
+  }
+
   async getDashboardData(): Promise<DashboardData> {
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1)
+
+    this.debug('Fetching dashboard data', {
+      startOfYear: startOfYear.toISOString(),
+      now: now.toISOString(),
+      apiBaseUrl: API_BASE_URL,
+    })
 
     try {
       const [timeEntries, payments] = await Promise.all([
@@ -93,9 +109,22 @@ class ClioService {
         this.fetchPayments({ start: startOfYear, end: now }),
       ])
 
+      this.debug('Fetched raw datasets', {
+        timeEntriesCount: timeEntries.length,
+        paymentsCount: payments.length,
+      })
+
       const revenueMetrics = this.calculateRevenueMetrics(payments, now)
       const attorneyBillableHours = this.calculateAttorneyBillableHours(timeEntries)
       const ytdTime = this.calculateYTDTime(timeEntries, now)
+
+      this.debug('Computed dashboard metrics', {
+        monthlyDeposits: revenueMetrics.monthlyDeposits,
+        weeklyRevenuePoints: revenueMetrics.weeklyRevenue.length,
+        ytdRevenuePoints: revenueMetrics.ytdRevenue.length,
+        attorneyBillableCount: attorneyBillableHours.length,
+        ytdTimePoints: ytdTime.length,
+      })
 
       return {
         monthlyDeposits: revenueMetrics.monthlyDeposits,
@@ -106,6 +135,7 @@ class ClioService {
       }
     } catch (error) {
       console.error('Failed to load dashboard data from Clio API', error)
+      this.debug('Dashboard load failed with error', error)
       throw error
     }
   }
@@ -129,21 +159,30 @@ class ClioService {
     ]
 
     for (const params of paramVariants) {
+      this.debug('Requesting time entries variant', params)
       try {
         const entries = await this.fetchAllPages<ClioTimeEntry>('/time_entries', params)
         const filtered = entries.filter((entry) => this.isWithinRange(entry.date, range))
+
+        this.debug('Time entries variant result', {
+          requested: entries.length,
+          withinRange: filtered.length,
+        })
 
         if (filtered.length > 0 || entries.length === 0) {
           return filtered
         }
       } catch (error) {
         if (this.shouldRetryWithNextConfig(error)) {
+          this.debug('Time entries variant failed, trying next configuration', this.safeError(error))
           continue
         }
+        this.debug('Time entries variant failed, aborting', this.safeError(error))
         throw error
       }
     }
 
+    this.debug('No time entries returned after all variants')
     return []
   }
 
@@ -183,23 +222,35 @@ class ClioService {
     ]
 
     for (const params of paramVariants) {
+      this.debug('Requesting payment activities variant', params)
       try {
         const activities = await this.fetchAllPages<ClioActivity>('/activities', params)
         const filtered = activities
           .filter((activity) => this.isPaymentActivity(activity))
           .filter((activity) => this.isWithinRange(activity.date, range))
 
+        this.debug('Payment activities variant result', {
+          requested: activities.length,
+          payments: filtered.length,
+        })
+
         if (filtered.length > 0 || activities.length === 0) {
           return filtered
         }
       } catch (error) {
         if (this.shouldRetryWithNextConfig(error)) {
+          this.debug(
+            'Payment activities variant failed, trying next configuration',
+            this.safeError(error)
+          )
           continue
         }
+        this.debug('Payment activities variant failed, aborting', this.safeError(error))
         throw error
       }
     }
 
+    this.debug('No payment activities returned after all variants')
     return []
   }
 
@@ -208,6 +259,7 @@ class ClioService {
     let page = 1
 
     while (page <= MAX_PAGES) {
+      this.debug('Requesting page', { path, page, per_page: PER_PAGE, params })
       const response = await clioApi.get(path, {
         params: { ...params, page, per_page: PER_PAGE },
       })
@@ -215,11 +267,18 @@ class ClioService {
       const payload = response.data as ClioPaginated<T> | T[]
       const items: T[] = Array.isArray(payload) ? payload : payload?.data ?? []
       results.push(...items)
+      this.debug('Received page data', {
+        path,
+        page,
+        received: items.length,
+        totalAccumulated: results.length,
+      })
 
       const paging = Array.isArray(payload) ? undefined : payload?.meta?.paging
 
       if (paging?.current_page !== undefined && paging?.total_pages !== undefined) {
         if (paging.current_page >= paging.total_pages) {
+          this.debug('Stopping pagination due to current_page >= total_pages', paging)
           break
         }
         page = paging.current_page + 1
@@ -255,11 +314,13 @@ class ClioService {
         continue
       }
 
+      this.debug('Stopping pagination after partial page', { path, page, received: items.length })
       break
     }
 
     if (page > MAX_PAGES) {
       console.warn(`Reached maximum page limit when fetching ${path}`)
+      this.debug('Reached maximum pagination limit', { path, pagesAttempted: MAX_PAGES })
     }
 
     return results
@@ -421,6 +482,7 @@ class ClioService {
 
     const trimmed = value.trim()
     if (!trimmed) {
+      this.debug('parseDate received empty value', { value })
       return null
     }
 
@@ -433,6 +495,7 @@ class ClioService {
       return new Date(parsed)
     }
 
+    this.debug('parseDate failed to parse value', { value })
     return null
   }
 
@@ -493,6 +556,23 @@ class ClioService {
     const end = this.normalizeToDay(range.end)
 
     return normalized >= start && normalized <= end
+  }
+
+  private safeError(error: unknown) {
+    if (axios.isAxiosError(error)) {
+      return {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        url: error.config?.url,
+        method: error.config?.method,
+        data: error.response?.data,
+      }
+    }
+    if (error instanceof Error) {
+      return { message: error.message, stack: error.stack }
+    }
+    return error
   }
 
   private formatDate(date: Date): string {
