@@ -94,6 +94,33 @@ const REVENUE_VALUE_EXCLUDE = ['uncollect', 'unpaid', 'outstanding', 'balance', 
 const HOURS_INCLUDE = ['hour']
 const HOURS_EXCLUDE = ['rate', 'target', 'percent', 'percentage', 'utilization', 'budget', 'capacity', 'goal']
 
+const REVENUE_COLUMN_TOKEN_GROUPS: string[][][] = [
+  [
+    ['collected', 'amount', 'operating'],
+    ['collected', 'amount', 'trust'],
+    ['collected', 'amount', 'total'],
+  ],
+  [
+    ['collected', 'amount'],
+  ],
+  [
+    ['payment', 'amount', 'operating'],
+    ['payment', 'amount', 'trust'],
+    ['payment', 'amount', 'total'],
+    ['payment', 'amount'],
+  ],
+  [
+    ['deposit', 'amount', 'operating'],
+    ['deposit', 'amount', 'trust'],
+    ['deposit', 'amount'],
+  ],
+  [
+    ['total', 'revenue'],
+    ['total', 'receipts'],
+    ['total', 'deposit'],
+  ],
+]
+
 const HOURS_COLUMN_PREFERENCES: string[][] = [
   ['billable', 'hours'],
   ['billed', 'hours'],
@@ -327,7 +354,7 @@ class ClioService {
     }
 
     const dateKey = this.findKeyAcrossRows(rows, REVENUE_DATE_KEY_PREFERENCES)
-    const revenueColumns = this.findColumnsByKeywords(rows, REVENUE_VALUE_INCLUDE, REVENUE_VALUE_EXCLUDE)
+    const revenueColumns = this.determineRevenueColumns(rows)
 
     rows.forEach((row) => {
       const date = dateKey ? this.parseDateValue(row[dateKey]) : null
@@ -437,7 +464,7 @@ class ClioService {
   }
 
   private determineTimeColumns(rows: CsvRow[]): string[] {
-    const hourColumns = this.findColumnsByKeywords(rows, HOURS_INCLUDE, HOURS_EXCLUDE)
+      const hourColumns = this.findColumnsByKeywords(rows, HOURS_INCLUDE, HOURS_EXCLUDE)
     if (hourColumns.length > 0) {
       return hourColumns
     }
@@ -472,13 +499,7 @@ class ClioService {
     excludeKeywords: string[] = []
   ): string[] {
     const columns = new Set<string>()
-    rows.forEach((row) => {
-      Object.keys(row).forEach((key) => {
-        if (key) {
-          columns.add(key)
-        }
-      })
-    })
+    this.getAllColumns(rows).forEach((key) => columns.add(key))
 
     const include = includeKeywords.map((keyword) => this.normalizeKey(keyword))
     const exclude = excludeKeywords.map((keyword) => this.normalizeKey(keyword))
@@ -492,6 +513,49 @@ class ClioService {
       const matchesExclude = exclude.some((keyword) => normalized.includes(keyword))
       return !matchesExclude
     })
+  }
+
+  private determineRevenueColumns(rows: CsvRow[]): string[] {
+    const columns = this.getAllColumns(rows)
+    if (columns.length === 0) {
+      return []
+    }
+
+    const normalizedColumns = columns.map((column) => ({
+      original: column,
+      normalized: this.normalizeKey(column),
+    }))
+
+    for (const group of REVENUE_COLUMN_TOKEN_GROUPS) {
+      const matches = new Set<string>()
+
+      group.forEach((tokens) => {
+        const match = normalizedColumns.find(({ normalized }) =>
+          tokens.every((token) => normalized.includes(token))
+        )
+        if (match) {
+          matches.add(match.original)
+        }
+      })
+
+      if (matches.size > 0) {
+        return Array.from(matches)
+      }
+    }
+
+    return this.findColumnsByKeywords(rows, REVENUE_VALUE_INCLUDE, REVENUE_VALUE_EXCLUDE)
+  }
+
+  private getAllColumns(rows: CsvRow[]): string[] {
+    const columns = new Set<string>()
+    rows.forEach((row) => {
+      Object.keys(row).forEach((key) => {
+        if (key) {
+          columns.add(key)
+        }
+      })
+    })
+    return Array.from(columns)
   }
 
   private selectAttorneyHourColumn(
