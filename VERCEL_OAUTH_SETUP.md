@@ -59,11 +59,11 @@ On your computer:
    - ✅ Production ✅ Preview ✅ Development
    - Click **Save**
 
-   **Second:**
-   - Name: `VITE_CLIO_API_BASE_URL`
-   - Value: `https://app.clio.com/api/v4`
-   - ✅ Production ✅ Preview ✅ Development
-   - Click **Save**
+**Second:**
+- Name: `VITE_CLIO_API_BASE_URL`
+- Value: `/api/clio`
+  - ✅ Production ✅ Preview ✅ Development
+  - Click **Save**
 
 4. **Redeploy:**
    - Deployments tab → ... → Redeploy
@@ -100,7 +100,7 @@ If you still want to do this:
 
    ```
    Name:  VITE_CLIO_API_BASE_URL
-   Value: https://app.clio.com/api/v4
+Value: /api/clio
    ✅ Production ✅ Preview ✅ Development
    ```
 
@@ -220,7 +220,7 @@ Vercel → Your Project → Settings → Environment Variables
 **What to add (Recommended):**
 ```
 VITE_CLIO_API_KEY=<your_access_token>
-VITE_CLIO_API_BASE_URL=https://app.clio.com/api/v4
+VITE_CLIO_API_BASE_URL=/api/clio
 ```
 
 **How to get access token:**

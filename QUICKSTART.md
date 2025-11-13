@@ -41,7 +41,7 @@ npm install
 5. Add to `.env`:
    ```env
    VITE_CLIO_API_KEY=your_api_key_here
-   VITE_CLIO_API_BASE_URL=https://app.clio.com/api/v4
+   VITE_CLIO_API_BASE_URL=/api/clio
    ```
 
 ## Step 3: Run the Dashboard
