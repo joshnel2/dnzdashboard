@@ -17,7 +17,7 @@ cp .env.example .env
 Edit `.env` with your credentials:
 ```
 VITE_CLIO_API_KEY=your_api_key_here
-VITE_CLIO_API_BASE_URL=https://app.clio.com/api/v4
+VITE_CLIO_API_BASE_URL=/api/clio
 ```
 
 ### 3. Start Development Server

@@ -64,8 +64,9 @@ All metrics are pulled from the Clio API:
    3. Add this (replace with your actual token):
       ```
       VITE_CLIO_API_KEY=your_access_token_here
-      VITE_CLIO_API_BASE_URL=https://app.clio.com/api/v4
+      VITE_CLIO_API_BASE_URL=/api/clio
       ```
+      > ℹ️ Existing deployments that still point `VITE_CLIO_API_BASE_URL` to `https://app.clio.com/api/v4` will automatically fall back to the proxy at runtime, but you should update the value to `/api/clio` and redeploy to avoid browser-side CORS warnings.
 
 3. **Run the development server:**
    ```bash
@@ -73,6 +74,7 @@ All metrics are pulled from the Clio API:
    ```
 
    The dashboard will be available at `http://localhost:3000`
+   > 💡 To use live Clio data during local development, run `vercel dev` instead of `npm run dev` so the `/api/clio` serverless proxy is available. (Requires the Vercel CLI.)
 
 4. **Build for production:**
    ```bash

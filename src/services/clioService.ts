@@ -1,7 +1,24 @@
 import axios from 'axios'
 import type { DashboardData } from '../types'
 
-const API_BASE_URL = 'https://app.clio.com/api/v4'
+const resolveApiBaseUrl = () => {
+  const configuredBaseUrl = import.meta.env.VITE_CLIO_API_BASE_URL?.trim()
+
+  if (!configuredBaseUrl) {
+    return '/api/clio'
+  }
+
+  if (configuredBaseUrl.startsWith('http') && configuredBaseUrl.includes('app.clio.com')) {
+    console.warn(
+      '[clioService] Direct Clio API base URLs are no longer supported in the browser. Falling back to /api/clio proxy.'
+    )
+    return '/api/clio'
+  }
+
+  return configuredBaseUrl
+}
+
+const API_BASE_URL = resolveApiBaseUrl()
 
 const getAccessToken = () => {
   if (typeof window !== 'undefined') {
@@ -12,9 +29,6 @@ const getAccessToken = () => {
 
 const clioApi = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 })
 
 clioApi.interceptors.request.use((config) => {

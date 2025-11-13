@@ -31,7 +31,7 @@ Just **2 things** from Clio:
 
 ```
 VITE_CLIO_API_KEY=PUT_YOUR_TOKEN_HERE
-VITE_CLIO_API_BASE_URL=https://app.clio.com/api/v4
+VITE_CLIO_API_BASE_URL=/api/clio
 ```
 
 ---
@@ -57,7 +57,7 @@ VITE_CLIO_API_BASE_URL=https://app.clio.com/api/v4
 **Example of what it should look like:**
 ```
 VITE_CLIO_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
-VITE_CLIO_API_BASE_URL=https://app.clio.com/api/v4
+VITE_CLIO_API_BASE_URL=/api/clio
 ```
 
 ---
@@ -195,7 +195,7 @@ You can also set these as **actual system environment variables** if you prefer:
 Add to your `~/.bashrc` or `~/.zshrc`:
 ```bash
 export VITE_CLIO_API_KEY="your_token_here"
-export VITE_CLIO_API_BASE_URL="https://app.clio.com/api/v4"
+export VITE_CLIO_API_BASE_URL="/api/clio"
 ```
 
 Then run: `source ~/.bashrc` (or `source ~/.zshrc`)

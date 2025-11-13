@@ -76,7 +76,7 @@ If you created an OAuth2 app in Clio and have Client ID and Client Secret:
 
    **Third:**
    - Name: `VITE_CLIO_API_BASE_URL`
-   - Value: `https://app.clio.com/api/v4`
+   - Value: `/api/clio`
    - ✅ Production ✅ Preview ✅ Development
    - Click **Add**
 
@@ -98,7 +98,7 @@ If you created an OAuth2 app in Clio and have Client ID and Client Secret:
 
 3. **Add your second variable:**
    - **Name:** `VITE_CLIO_API_BASE_URL`
-   - **Value:** `https://app.clio.com/api/v4`
+   - **Value:** `/api/clio`
    - Select: **Production**, **Preview**, and **Development**
    - Click **"Add"**
 
@@ -113,7 +113,7 @@ If you created an OAuth2 app in Clio and have Client ID and Client Secret:
 │        [Add] button                      │
 ├─────────────────────────────────────────┤
 │ Name:  VITE_CLIO_API_BASE_URL          │
-│ Value: https://app.clio.com/api/v4     │
+│ Value: /api/clio                       │
 │ ☑ Production ☑ Preview ☑ Development   │
 │        [Add] button                      │
 └─────────────────────────────────────────┘
@@ -321,7 +321,7 @@ Project → Settings → Environment Variables
 **Variables You Need:**
 ```
 VITE_CLIO_API_KEY=your_clio_token
-VITE_CLIO_API_BASE_URL=https://app.clio.com/api/v4
+VITE_CLIO_API_BASE_URL=/api/clio
 ```
 
 **After changes:**

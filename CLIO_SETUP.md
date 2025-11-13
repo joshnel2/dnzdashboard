@@ -46,7 +46,7 @@ cp .env.example .env
 
 **For OAuth2 (Recommended):**
 ```env
-VITE_CLIO_API_BASE_URL=https://app.clio.com/api/v4
+VITE_CLIO_API_BASE_URL=/api/clio
 VITE_CLIO_CLIENT_ID=your_client_id_here
 VITE_CLIO_CLIENT_SECRET=your_client_secret_here
 VITE_CLIO_REDIRECT_URI=http://localhost:3000/callback
@@ -54,7 +54,7 @@ VITE_CLIO_REDIRECT_URI=http://localhost:3000/callback
 
 **For API Key (Simple):**
 ```env
-VITE_CLIO_API_BASE_URL=https://app.clio.com/api/v4
+VITE_CLIO_API_BASE_URL=/api/clio
 VITE_CLIO_API_KEY=your_access_token_here
 ```
 

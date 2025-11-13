@@ -31,7 +31,7 @@ Value: (paste your Client Secret from Clio)
 ### Third Variable:
 ```
 Name:  VITE_CLIO_API_BASE_URL
-Value: https://app.clio.com/api/v4
+Value: /api/clio
 ```
 ✅ Check: Production, Preview, Development
 
@@ -163,7 +163,7 @@ You'll see a **"Connect to Clio"** button:
 ```
 VITE_CLIO_CLIENT_ID=abc123...
 VITE_CLIO_CLIENT_SECRET=xyz789...
-VITE_CLIO_API_BASE_URL=https://app.clio.com/api/v4
+VITE_CLIO_API_BASE_URL=/api/clio
 ```
 
 **What you need in Clio:**
